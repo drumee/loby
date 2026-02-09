@@ -123,6 +123,7 @@ class Signup extends Loby {
     if (data.user && data.user.email && data.firstname) {
       args = { ...data.user, password }
     }
+    // create_account in parent class will handle referral binding automatically
     let status = await super.create_account(args)
     let res = await this.session.signin({ uid: email, email, password });
     res.status = "ok";
@@ -152,6 +153,20 @@ class Signup extends Loby {
     await this.make_default_folers(hub)
     await this.setWallpaper(this.uid)
     await this.send_signup_welcome(email)
+
+    const referral_code = this.input.need('referral_code') || this.input.need('ref') || '';
+    // Bind referral if provided
+    if (referral_code && res.user && res.user.id) {
+      try {
+        await this.db.await_proc(
+          `${this.app_db}.reward_save_referral`,
+          referral_code,
+          res.user.id
+        );
+      } catch (e) {
+        this.warn('[create_account] Failed to bind referral:', e.message || e);
+      }
+    }
     this.output.data(res);
   }
 
