@@ -155,14 +155,19 @@ class Signup extends Loby {
     await this.send_signup_welcome(email)
 
     const referral_code = this.input.need('referral_code') || this.input.need('ref') || '';
+    const reward_conf = Cache.getSysConf('reward_hub_conf');
+    const { db_name: reward_db } = JSON.parse(reward_conf);
     // Bind referral if provided
     if (referral_code && res.user && res.user.id) {
       try {
-        await this.db.await_proc(
-          `${this.app_db}.reward_save_referral`,
+        // Use yp.await_proc to call procedure in reward-hub database (not loby database)
+        let result = await this.yp.await_proc(
+          `${reward_db}.reward_save_referral`,
           referral_code,
           res.user.id
         );
+        console.log("AAA:166", referral_code, res.user.id, result);
+       
       } catch (e) {
         this.warn('[create_account] Failed to bind referral:', e.message || e);
       }
