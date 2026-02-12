@@ -166,8 +166,6 @@ class Signup extends Loby {
           referral_code,
           res.user.id
         );
-        console.log("AAA:166", referral_code, res.user.id, result);
-       
       } catch (e) {
         this.warn('[create_account] Failed to bind referral:', e.message || e);
       }
