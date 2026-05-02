@@ -48,27 +48,94 @@ class Onboarding extends Entity {
   }
 
   /**
-   * 
+   * v2 Step 1: capture firstname only. lastname/email/country_code are
+   * collected at signup (signup_data); they're forwarded here when the
+   * legacy v1 wizard is still in use, but no longer required.
    */
   async save_user_info() {
     const sessionId = this.input.sid();
     const firstName = this.input.need(Attr.firstname);
-    const lastName = this.input.need(Attr.lastname);
-    const email = this.input.need(Attr.email);
-    const countryCode = this.input.need('country_code');
+    const lastName = this.input.get(Attr.lastname) || null;
+    const email = this.input.get(Attr.email) || null;
+    const countryCode = this.input.get('country_code') || null;
 
-    // Basic Validation
-    if (!firstName || !lastName || !email || !countryCode) {
-      return this.exception.user("Missing required user info fields.")
-      // throw new Error("Missing required user info fields.");
+    if (!firstName) {
+      return this.exception.user("firstname is required.");
     }
 
-    // Call SP
     await this.db.await_proc(
       `${this.app_db}.save_onboarding_user_info`,
       sessionId, firstName, lastName, email, countryCode
     );
     this.output.data({ success: true, message: 'User info saved.', data: {} });
+  }
+
+  /**
+   * v2 Step 2: industry / kind of work.
+   */
+  async save_industry() {
+    const sessionId = this.input.sid();
+    const industry = this.input.need('industry');
+    await this.db.await_proc(
+      `${this.app_db}.save_onboarding_industry`,
+      sessionId, industry
+    );
+    this.output.data({ success: true, message: 'Industry saved.', data: {} });
+  }
+
+  /**
+   * v2 Step 3: role.
+   */
+  async save_role() {
+    const sessionId = this.input.sid();
+    const role = this.input.need('role');
+    await this.db.await_proc(
+      `${this.app_db}.save_onboarding_role`,
+      sessionId, role
+    );
+    this.output.data({ success: true, message: 'Role saved.', data: {} });
+  }
+
+  /**
+   * v2 Step 4: team size. Replaces save_usage_plan in the new wizard.
+   */
+  async save_team_size() {
+    const sessionId = this.input.sid();
+    const teamSize = this.input.need('team_size');
+    await this.db.await_proc(
+      `${this.app_db}.save_onboarding_team_size`,
+      sessionId, teamSize
+    );
+    this.output.data({ success: true, message: 'Team size saved.', data: {} });
+  }
+
+  /**
+   * v2 Step 5: workspace intent ("What do you want to start with?"). Optional.
+   */
+  async save_intent() {
+    const sessionId = this.input.sid();
+    const intent = this.input.need('intent');
+    await this.db.await_proc(
+      `${this.app_db}.save_onboarding_intent`,
+      sessionId, intent
+    );
+    this.output.data({ success: true, message: 'Intent saved.', data: {} });
+  }
+
+  /**
+   * v2 Step 6 (tools page, second block): challenges + free-text note.
+   * Both are optional from the UI's "Tell me later" path, but if called
+   * the challenges array is required.
+   */
+  async save_challenges() {
+    const sessionId = this.input.sid();
+    const challenges = toArray(this.input.need('challenges'));
+    const note = this.input.get('note') || null;
+    await this.db.await_proc(
+      `${this.app_db}.save_onboarding_challenges`,
+      sessionId, JSON.stringify(challenges), note
+    );
+    this.output.data({ success: true, message: 'Challenges saved.', data: {} });
   }
 
   /**
@@ -208,16 +275,22 @@ class Onboarding extends Entity {
    */
   async update_profile() {
     const { email } = this.user.get(Attr.profile);
-    this.debug("AAA:204", this.user.get(Attr.profile))
-    if (!this.uid === ID_NOBODY) {
+    if (this.uid === ID_NOBODY) {
       return this.output.data({ status: "no-user" });
     }
     const sql = `SELECT * FROM ${this.app_db}.onboarding_responses WHERE email=? ORDER BY mtime DESC LIMIT 1`;
-    const { firstname, lastname, country_code }
-      = await this.yp.await_query(sql, email) || {};
-    this.debug("AAA:210", { firstname, lastname, country_code, email })
-    this.yp.await_proc('drumate_update_profile', this.uid, { onboarded: 1, firstname, lastname, country_code })
-    this.output.data({ firstname, lastname, country_code });
+    const row = await this.yp.await_query(sql, email) || {};
+    const { firstname, lastname, country_code, industry, role, team_size, intent } = row;
+    const profile = { onboarded: 1 };
+    if (firstname)    profile.firstname    = firstname;
+    if (lastname)     profile.lastname     = lastname;
+    if (country_code) profile.country_code = country_code;
+    if (role)         profile.role         = role;
+    if (industry)     profile.industry     = industry;
+    if (team_size)    profile.team_size    = team_size;
+    if (intent)       profile.intent       = intent;
+    await this.yp.await_proc('drumate_update_profile', this.uid, profile);
+    this.output.data(profile);
   }
 
   /**
@@ -309,13 +382,21 @@ class Onboarding extends Entity {
       return this.exception.user('User not authenticated.');
     }
 
-    const emails = toArray(this.input.need('emails'));
-    if (!emails.length) {
+    const raw = toArray(this.input.need('emails'));
+    if (!raw.length) {
       return this.exception.user('No emails provided.');
     }
 
+    // v2 wizard sends [{email, role}]; v1 sent bare strings. Accept both.
+    const invites = raw.map(e => {
+      if (e && typeof e === 'object') {
+        return { email: String(e.email || '').trim(), role: e.role || 'member' };
+      }
+      return { email: String(e).trim(), role: 'member' };
+    });
+
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const invalid = emails.filter(e => !EMAIL_RE.test(String(e).trim()));
+    const invalid = invites.filter(i => !EMAIL_RE.test(i.email)).map(i => i.email);
     if (invalid.length) {
       return this.exception.user(`Invalid email address(es): ${invalid.join(', ')}`);
     }
@@ -343,12 +424,13 @@ class Onboarding extends Entity {
     const tpl = resolve(__dirname, './templates/onboarding-invite.html');
     let sent = 0;
 
-    for (const email of emails) {
+    for (const { email, role } of invites) {
       const data = {
         heading: 'You have been invited to Drumee',
         hello: 'Hello,',
         message: 'Your colleague has invited you to join Drumee — a sovereign workspace for files, chat, and collaboration.',
         link: referral_url,
+        role,
         workspace: 'Join Drumee',
         signature: 'The Drumee Team',
         reminder: `© ${new Date().getFullYear()} Drumee. All rights reserved.`,
@@ -356,7 +438,7 @@ class Onboarding extends Entity {
 
       const msg = new Messenger({
         subject: 'You have been invited to Drumee',
-        recipient: email.trim(),
+        recipient: email,
         handler: this.exception.email,
       });
 

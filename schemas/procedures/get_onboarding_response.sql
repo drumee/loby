@@ -1,4 +1,7 @@
--- File: onboarding-server/schemas/procedures/get_onboarding_response.sql
+-- File: loby/schemas/procedures/get_onboarding_response.sql
+--
+-- v2: surfaces all new fields plus legacy ones so the wizard can resume
+-- from any step. Keeps `plan`, `tools`, `privacy` aliases used by the v1 client.
 
 DROP PROCEDURE IF EXISTS `get_onboarding_response`;
 
@@ -8,30 +11,33 @@ CREATE PROCEDURE `get_onboarding_response`(
     IN _session_id VARCHAR(128) CHARACTER SET ascii
 )
 BEGIN
-    -- Validate input
     IF _session_id IS NULL OR _session_id = '' THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'session_id is required';
     END IF;
 
-    -- Get onboarding response
     SELECT
         id,
-        session_id, 
+        session_id,
         firstname,
         lastname,
         email,
-        country_code, 
-        usage_plan,
-        usage_plan plan,
+        country_code,
+        industry,
+        role,
+        team_size,
+        intent,
         current_tools,
-        current_tools tools,
+        current_tools         AS tools,
+        challenges,
+        challenge_note,
+        usage_plan,
+        usage_plan            AS plan,
         privacy_concern_level,
-        privacy_concern_level privacy,
+        privacy_concern_level AS privacy,
         ctime,
         mtime
     FROM onboarding_responses
-    WHERE session_id = _session_id; 
-
+    WHERE session_id = _session_id;
 END$$
 
 DELIMITER ;

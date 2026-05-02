@@ -21,6 +21,41 @@
         "fast_check": "public-api"
       }
     },
+    "save_industry": {
+      "scope": "hub",
+      "permission": {
+        "src": "anonymous",
+        "fast_check": "public-api"
+      }
+    },
+    "save_role": {
+      "scope": "hub",
+      "permission": {
+        "src": "anonymous",
+        "fast_check": "public-api"
+      }
+    },
+    "save_team_size": {
+      "scope": "hub",
+      "permission": {
+        "src": "anonymous",
+        "fast_check": "public-api"
+      }
+    },
+    "save_intent": {
+      "scope": "hub",
+      "permission": {
+        "src": "anonymous",
+        "fast_check": "public-api"
+      }
+    },
+    "save_challenges": {
+      "scope": "hub",
+      "permission": {
+        "src": "anonymous",
+        "fast_check": "public-api"
+      }
+    },
     "save_tools": {
       "scope": "hub",
       "permission": {
