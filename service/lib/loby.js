@@ -25,7 +25,7 @@ const { template } = require("lodash");
 class Account extends Entity {
 
   /**
-   * The account schema is picked from the pool of hubs that are already created by offline process 
+   * The account schema is picked from the pool of hubs that are already created by offline process
    */
   async create_account(data, autosignin = 1) {
     const { main_domain: domain } = sysEnv();
@@ -33,6 +33,7 @@ class Account extends Entity {
       email,
       firstname = "",
       password,
+      auth_method = "local",   // "local" | "google" | "apple" | ...
     } = data;
     let onboarded = 1;
     if (!firstname) {
@@ -48,6 +49,12 @@ class Account extends Entity {
       lastname = a.join(' ')
     }
     username = username.replace(/[^a-zA-Z0-9]/g, '');
+    // password_set tells downstream (delete-account, change-email, etc.)
+    // whether check_password_next is a viable verifier. OAuth users land
+    // here with auth_method != "local" and a random UUID password they
+    // never see — for them, password_set=0 → those flows must use OTP
+    // instead. A user can flip this to 1 later by setting a real password.
+    const password_set = auth_method === "local" ? 1 : 0;
     let profile = {
       username,
       sharebox: uniqueId(),
@@ -58,7 +65,9 @@ class Account extends Entity {
       lang: this.user.language() || this.input.app_language(),
       firstname,
       lastname,
-      email
+      email,
+      auth_method,
+      password_set,
     }
 
     let user = await this.yp.await_proc("drumate_create", password, profile);
@@ -123,11 +132,20 @@ class Account extends Entity {
       firstname = a[0] || '';
       lastname = a[1] || '';
     }
+    // TODO(P5): post-OAuth onboarding. drumate_create gets `onboarded:1`
+    // when firstname is present (which Google/Apple typically supply),
+    // so the user lands directly on the desk with no chance to set lang
+    // preference or avatar. Worth routing new SSO users through the
+    // welcome onboarding step on first sign-in.
     const fullname = `${firstname} ${lastname}`.trim();
     const createData = {
       email,
       firstname: fullname || firstname,
-      password: uniqueId() // OAuth users don't have password, set default
+      // OAuth users get a random password they never see. password_set=0
+      // is set in create_account based on auth_method, which routes any
+      // future step-up auth (delete, email change) through email-OTP.
+      password: uniqueId(),
+      auth_method: provider,
     };
 
     const creationResult = await this.create_account(createData, 0) || {};
@@ -231,6 +249,14 @@ class Account extends Entity {
         sessionData.method = 'signin';
         return sessionData;
       }
+
+      // TODO(P5): consider an explicit-confirmation step on first link.
+      // session_login_with_oauth currently auto-links any existing local
+      // user with a matching email (yp/procedures/session/session_login_with_oauth.sql:40-58).
+      // That's convenient but a minor footgun if an attacker controls
+      // a Google account with the same email — they get auto-merged.
+      // Adding a confirmation step ("Link this Google account to your
+      // existing Drumee account?") would close the gap.
 
       // CASE B: Email exists but not linked
       if (sessionData && sessionData.error_code === 'oauth_not_linked') {
