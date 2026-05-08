@@ -131,9 +131,11 @@ class Onboarding extends Entity {
     const sessionId = this.input.sid();
     const challenges = toArray(this.input.need('challenges'));
     const note = this.input.get('note') || null;
+    // Pass array directly — Drumee db driver handles JSON serialization.
+    // Do NOT JSON.stringify here (causes double-encoding at the driver layer).
     await this.db.await_proc(
       `${this.app_db}.save_onboarding_challenges`,
-      sessionId, JSON.stringify(challenges), note
+      sessionId, challenges, note
     );
     this.output.data({ success: true, message: 'Challenges saved.', data: {} });
   }
@@ -194,18 +196,22 @@ class Onboarding extends Entity {
   }
 
   /**
-   * 
+   * v2 Step 5A: tools currently used by the team (multi-select).
+   * Valid values: google_drive | notion | slack | dropbox |
+   *               clickup | trello | jira | other
+   * FE sends: { tools: ["notion", "slack"] }
    */
   async save_tools() {
     const sessionId = this.input.sid();
-    const currentTools = this.input.need(Attr.args);
-
-    // Call SP
+    const tools = toArray(this.input.need('tools'));
+    if (!tools.length) {
+      return this.exception.user('tools array is required and must not be empty.');
+    }
+    // Pass array directly — Drumee db driver handles JSON serialization.
     await this.db.await_proc(
       `${this.app_db}.save_onboarding_tools`,
-      sessionId, currentTools
+      sessionId, tools
     );
-
     this.output.data({ success: true, message: 'Tools saved.', data: {} });
   }
 
@@ -370,9 +376,17 @@ class Onboarding extends Entity {
   }
 
   /**
-   * Step 3: Send invite emails to a list of email addresses.
-   * Each email receives a referral signup link tied to the current user.
-   * Invite tracking is handled automatically when the invitee signs up using the referral code (via reward_save_referral in signup flow).
+   * Step 7 (new wizard) / Step 3 (v1 wizard): Send invite emails.
+   *
+   * Accepts two input formats:
+   *   v2 (new wizard): { emails: [{email, role}] }
+   *     role is one of: admin | write | read
+   *     (maps to Drumee privilege bitmask: admin=31, write=7, read=3)
+   *   v1 (legacy):     { emails: ["addr@example.com", ...] }
+   *     defaults to role: 'member' for backward-compat
+   *
+   * Role is included in the invite email as informational context.
+   * Actual hub permission granting happens at signup via the referral flow.
    *
    * NOTE: cross-DB call to C_reward via this.db.
    * If loby DB user lacks EXECUTE on C_reward, switch to this.yp.await_proc(...).
@@ -388,11 +402,13 @@ class Onboarding extends Entity {
     }
 
     // v2 wizard sends [{email, role}]; v1 sent bare strings. Accept both.
+    const VALID_ROLES = ['admin', 'write', 'read'];
     const invites = raw.map(e => {
       if (e && typeof e === 'object') {
-        return { email: String(e.email || '').trim(), role: e.role || 'member' };
+        const role = VALID_ROLES.includes(e.role) ? e.role : 'read';
+        return { email: String(e.email || '').trim(), role };
       }
-      return { email: String(e).trim(), role: 'member' };
+      return { email: String(e).trim(), role: 'read' };
     });
 
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

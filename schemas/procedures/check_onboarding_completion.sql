@@ -1,14 +1,12 @@
 -- File: loby/schemas/procedures/check_onboarding_completion.sql
 --
--- v2: completion = firstname + industry + role + team_size + tools selected.
--- intent and challenges are optional (the wizard offers "Tell me later").
+-- v2: completion = firstname + industry + role + team_size (Steps 1-4).
+-- intent, tools and challenges are optional ("Tell me later" / "Skip this step"
+-- is allowed in the UI for those steps) — consistent with mark_onboarding_complete.
 -- Returns a JSON map of per-step booleans so the client can resume from
 -- the first incomplete step.
-
 DROP PROCEDURE IF EXISTS `check_onboarding_completion`;
-
 DELIMITER $$
-
 CREATE PROCEDURE `check_onboarding_completion`(
     IN _session_id VARCHAR(128) CHARACTER SET ascii
 )
@@ -34,31 +32,44 @@ BEGIN
 
     IF NOT v_exists THEN
         SELECT
-            _session_id  AS session_id,
-            FALSE        AS is_completed,
+            _session_id   AS session_id,
+            FALSE         AS is_completed,
             'not_started' AS status,
-            NULL         AS steps_completed;
+            NULL          AS steps_completed;
     ELSE
-        SELECT firstname, industry, role, team_size, intent,
-               current_tools,
-               CASE
-                 WHEN current_tools IS NULL THEN 0
-                 WHEN JSON_TYPE(current_tools) = 'ARRAY'  THEN JSON_LENGTH(current_tools)
-                 WHEN JSON_TYPE(current_tools) = 'OBJECT' THEN JSON_LENGTH(JSON_KEYS(current_tools))
-                 ELSE 0
-               END,
-               challenges
-        INTO   v_firstname, v_industry, v_role, v_team_size, v_intent,
-               v_tools, v_tools_count, v_challenges
+        SELECT
+            firstname,
+            industry,
+            role,
+            team_size,
+            intent,
+            current_tools,
+            CASE
+                WHEN current_tools IS NULL THEN 0
+                WHEN JSON_TYPE(current_tools) = 'ARRAY'  THEN JSON_LENGTH(current_tools)
+                WHEN JSON_TYPE(current_tools) = 'OBJECT' THEN JSON_LENGTH(JSON_KEYS(current_tools))
+                ELSE 0
+            END,
+            challenges
+        INTO
+            v_firstname,
+            v_industry,
+            v_role,
+            v_team_size,
+            v_intent,
+            v_tools,
+            v_tools_count,
+            v_challenges
         FROM onboarding_responses
         WHERE session_id = _session_id;
 
+        -- Steps 1-4 are mandatory (no "Tell me later" in UI for these steps).
+        -- Steps 5-7 (intent, tools, challenges) are optional — skip allowed.
         SET v_completed = (
-            v_firstname  IS NOT NULL AND v_firstname <> '' AND
-            v_industry   IS NOT NULL AND
-            v_role       IS NOT NULL AND
-            v_team_size  IS NOT NULL AND
-            v_tools_count > 0
+            v_firstname IS NOT NULL AND v_firstname <> '' AND
+            v_industry  IS NOT NULL AND
+            v_role      IS NOT NULL AND
+            v_team_size IS NOT NULL
         );
 
         SELECT
@@ -76,5 +87,4 @@ BEGIN
             ) AS steps_completed;
     END IF;
 END$$
-
 DELIMITER ;
