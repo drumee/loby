@@ -46,7 +46,7 @@ jobs:
     timeout-minutes: 10
     env:
       EP: ${{ needs.build.outputs.endpoint }}
-      RUNTIME_DIR: /srv/drumee/runtime/plugins/server
+      RUNTIME_DIR: ${{ vars.DRUMEE_RUNTIME_BASE }}/plugins/server
     steps:
       - name: Checkout
         uses: actions/checkout@v4
