@@ -1,0 +1,75 @@
+name: CD - deploy loby
+
+on:
+  push:
+    branches: [preview, ci/setup-deploy]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-loby-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: self-hosted
+    timeout-minutes: 15
+    outputs:
+      endpoint: ${{ steps.ep.outputs.endpoint }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve endpoint
+        id: ep
+        run: |
+          if [ "${{ github.ref_name }}" = "ci/setup-deploy" ]; then
+            EP="liam"
+          else
+            EP="main"
+          fi
+          echo "endpoint=$EP" >> $GITHUB_OUTPUT
+
+      - name: Show env
+        run: |
+          echo "Endpoint: ${{ steps.ep.outputs.endpoint }}"
+          node --version
+          npm --version
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: self-hosted
+    timeout-minutes: 5
+    steps:
+      - name: Sync to runtime dir
+        run: |
+          sudo mkdir -p /srv/drumee/runtime/plugins/server/${{ needs.build.outputs.endpoint }}/loby
+          sudo rsync -a --delete \
+            --exclude=.git --exclude=.dev-tools.rc --exclude=.github \
+            $GITHUB_WORKSPACE/ \
+            /srv/drumee/runtime/plugins/server/${{ needs.build.outputs.endpoint }}/loby/
+
+      - name: Restart endpoint service
+        run: |
+          sudo /usr/sbin/drumee restart ${{ needs.build.outputs.endpoint }}/service > /dev/null
+          echo "Restarted endpoint service"
+
+  verify:
+    name: Verify
+    needs: [build, deploy]
+    runs-on: self-hosted
+    timeout-minutes: 3
+    steps:
+      - name: Verify file presence
+        run: |
+          plugin_dir=/srv/drumee/runtime/plugins/server/${{ needs.build.outputs.endpoint }}/loby
+          if [ ! -f "$plugin_dir/package.json" ]; then
+            echo "Plugin package.json not found at $plugin_dir"
+            exit 1
+          fi
+          deployed_version=$(sudo cat "$plugin_dir/package.json" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
+          echo "Deployed version: $deployed_version"
