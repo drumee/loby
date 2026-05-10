@@ -43,33 +43,59 @@ jobs:
     name: Deploy
     needs: build
     runs-on: self-hosted
-    timeout-minutes: 5
+    timeout-minutes: 10
+    env:
+      EP: ${{ needs.build.outputs.endpoint }}
+      RUNTIME_DIR: /srv/drumee/runtime/plugins/server
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Backup current state
+        run: |
+          sudo mkdir -p $RUNTIME_DIR/$EP
+          if [ -d "$RUNTIME_DIR/$EP/loby" ]; then
+            sudo rsync -a --delete $RUNTIME_DIR/$EP/loby/ $RUNTIME_DIR/$EP/loby.backup/
+          fi
+
       - name: Sync to runtime dir
         run: |
-          sudo mkdir -p /srv/drumee/runtime/plugins/server/${{ needs.build.outputs.endpoint }}/loby
+          sudo mkdir -p $RUNTIME_DIR/$EP/loby
           sudo rsync -a --delete \
             --exclude=.git --exclude=.dev-tools.rc --exclude=.github \
-            $GITHUB_WORKSPACE/ \
-            /srv/drumee/runtime/plugins/server/${{ needs.build.outputs.endpoint }}/loby/
+            $GITHUB_WORKSPACE/ $RUNTIME_DIR/$EP/loby/
 
       - name: Restart endpoint service
         run: |
-          sudo /usr/sbin/drumee restart ${{ needs.build.outputs.endpoint }}/service > /dev/null
+          sudo /usr/sbin/drumee restart $EP/service > /dev/null
           echo "Restarted endpoint service"
 
-  verify:
-    name: Verify
-    needs: [build, deploy]
-    runs-on: self-hosted
-    timeout-minutes: 3
-    steps:
-      - name: Verify file presence
+      - name: Verify deployed package
         run: |
-          plugin_dir=/srv/drumee/runtime/plugins/server/${{ needs.build.outputs.endpoint }}/loby
+          plugin_dir=$RUNTIME_DIR/$EP/loby
           if [ ! -f "$plugin_dir/package.json" ]; then
             echo "Plugin package.json not found at $plugin_dir"
             exit 1
           fi
           deployed_version=$(sudo cat "$plugin_dir/package.json" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
           echo "Deployed version: $deployed_version"
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          if [ -d "$RUNTIME_DIR/$EP/loby.backup" ]; then
+            echo "Rolling back to previous version..."
+            sudo rsync -a --delete $RUNTIME_DIR/$EP/loby.backup/ $RUNTIME_DIR/$EP/loby/
+            sudo /usr/sbin/drumee restart $EP/service > /dev/null
+            echo "Rolled back"
+          else
+            echo "No backup available, cannot rollback"
+          fi
+
+      - name: Cleanup
+        if: always()
+        continue-on-error: true
+        run: sudo rm -rf $RUNTIME_DIR/$EP/loby.backup/
