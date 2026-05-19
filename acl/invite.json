@@ -1,0 +1,13 @@
+{
+  "services": {
+    "accept_invite": {
+      "scope": "hub",
+      "permission": {
+        "src": "owner"
+      }
+    }
+  },
+  "modules": {
+    "private": "service/invite"
+  }
+}
