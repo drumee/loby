@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="x-apple-disable-message-reformatting">
+  <title><%= heading %></title>
+</head>
+<body style="margin:0;padding:0;background:#f2f2f7;-webkit-font-smoothing:antialiased;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:#f2f2f7;">
+    <tr>
+      <td align="center" style="padding:20px 8px;text-align:center;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center" style="width:600px;max-width:100%;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden;">
+
+          <!-- Header -->
+          <tr>
+            <td bgcolor="#433cc5" align="center" style="padding:24px;background:#433cc5;text-align:center;border-radius:8px 8px 0 0;">
+              <img src="https://content.app.drumee.com/icons/logo.png" width="170" height="36" alt="Drumee" style="display:block;border:0;outline:0;text-decoration:none;margin:0 auto;">
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:32px;" align="center">
+              <h1 style="margin:0 0 8px 0;text-align:center;font-weight:600;font-size:24px;line-height:1.2;color:#282538;"><%= heading %></h1>
+              <p style="margin:0 0 24px 0;text-align:center;font-size:16px;line-height:1.4;color:#84848c;"><%= subheading %></p>
+
+              <p style="margin:0 0 16px 0;text-align:left;font-size:16px;line-height:1.5;color:#282538;"><%= hello %></p>
+              <p style="margin:0 0 24px 0;text-align:left;font-size:16px;line-height:1.5;color:#282538;"><%= intro %></p>
+
+              <!-- CTA button -->
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto 24px auto;">
+                <tr><td bgcolor="#433cc5" align="center" style="border-radius:8px;">
+                  <a href="<%= verify_url %>" style="display:inline-block;padding:14px 32px;font-weight:600;font-size:16px;color:#ffffff;text-decoration:none;border-radius:8px;"><%= button_label %></a>
+                </td></tr>
+              </table>
+
+              <p style="margin:0 0 6px 0;text-align:center;font-size:14px;line-height:1.4;color:#84848c;"><%= fallback_label %></p>
+              <p style="margin:0 0 24px 0;text-align:center;font-size:14px;line-height:1.4;word-break:break-all;color:#433cc5;"><%= verify_url %></p>
+
+              <!-- Security note -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f2f2f7;border-radius:8px;">
+                <tr><td style="padding:16px;text-align:left;font-size:13px;line-height:1.5;color:#84848c;">
+                  <strong style="color:#282538;"><%= security_title %></strong><br><%= security_note %>
+                </td></tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td bgcolor="#f2f2f7" align="center" style="background:#f2f2f7;border-top:1px solid #d1d1d6;padding:24px 32px;text-align:center;">
+              <p style="margin:0;text-align:center;font-size:10px;line-height:1.4;color:#84848c;">&copy; <%= new Date().getFullYear() %> Drumee. All rights reserved.
+                &nbsp;|&nbsp;<a href="https://drumee.com/privacy/" style="color:#84848c;text-decoration:none;">Privacy Policy</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

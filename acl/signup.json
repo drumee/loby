@@ -27,6 +27,20 @@
         "src": "anonymous",
         "fast_check": "public-api"
       }
+    },
+    "verify_email": {
+      "scope": "hub",
+      "permission": {
+        "src": "anonymous",
+        "fast_check": "public-api"
+      }
+    },
+    "resend_verification": {
+      "scope": "hub",
+      "permission": {
+        "src": "anonymous",
+        "fast_check": "public-api"
+      }
     }
   },
   "modules": {

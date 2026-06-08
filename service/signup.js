@@ -111,7 +111,84 @@ class Signup extends Loby {
     await msg.send({ html });
   }
   /**
-   * 
+   * Mint a verification token and email the verify link.
+   */
+  async _send_verification_email(_uid, _email) {
+    try {
+      const { token } = await this.yp.await_proc("drumate_set_verification_token", _uid, _email) || {};
+      if (!token) {
+        this.warn("[_send_verification_email] no token minted for", _email);
+        return 0;
+      }
+      const homepath = this.input.homepath();
+      const verify_url = `${homepath}#/welcome/verify?token=${encodeURIComponent(token)}`;
+      const ulang = this.input.ua_language();
+      const lex = Cache.lex(ulang);
+      const data = {
+        heading: lex._verify_your_email || "Verify Your Email Address",
+        subheading: lex._thanks_for_registering || "Thank you for registering with Drumee",
+        hello: (lex._hello_x || "Hello %s,").format(_email),
+        intro: lex._verify_email_intro ||
+          "Welcome to Drumee! To complete your registration, please verify your email address by clicking the button below.",
+        button_label: lex._verify_email_button || "Verify Email Address",
+        verify_url,
+        fallback_label: lex._verify_email_fallback || "Or copy and paste this link into your browser:",
+        security_title: lex._security_note_title || "Security Note",
+        security_note: lex._verify_email_expiry ||
+          "This verification link will expire in 24 hours. For your security, please do not share this email with anyone.",
+      };
+      const msg = new Messenger({
+        subject: lex._verify_your_email || "Verify Your Email Address",
+        recipient: _email,
+        handler: this.exception.email,
+      });
+      const tpl = resolve(__dirname, "./templates/verify-email.html");
+      const html = msg.renderFrom(tpl, data);
+      await msg.send({ html });
+      return 1;
+    } catch (e) {
+      this.warn("[_send_verification_email] failed", e);
+      return 0;
+    }
+  }
+
+  /**
+   * Verify a signup email from the link token. Public/anonymous.
+   */
+  async verify_email() {
+    const token = this.input.need(Attr.token);
+    const res = await this.yp.await_proc("drumate_verify_email_token", token) || {};
+    this.output.data({ verified: res.verified === 1 ? 1 : 0 });
+  }
+
+  /**
+   * Re-mint the verification token and re-send the link. Public/anonymous.
+   */
+  async resend_verification() {
+    // Prefer the email passed by the client (the "Check your inbox" screen
+    // knows it); fall back to the pre-signup signup_data row by session.
+    // The session lookup can miss once create_account has signed the user in,
+    // so the explicit email is the reliable source.
+    let email = this.input.get(Attr.email);
+    if (!email) {
+      const sessionId = this.input.sid();
+      const sql = `SELECT email FROM ${this.app_db}.signup_data WHERE session_id=?`;
+      const row = await this.db.await_query(sql, sessionId) || {};
+      email = row.email;
+    }
+    if (!email) {
+      return this.output.data({ status: "no_pending_signup" });
+    }
+    const user = await this.yp.await_proc("drumate_exists", email);
+    if (!user || !user.id) {
+      return this.output.data({ status: "no_account", email });
+    }
+    const sent = await this._send_verification_email(user.id, email);
+    this.output.data({ status: sent ? "ok" : "send_failed", sent, email });
+  }
+
+  /**
+   *
    */
   async create_account() {
     const email = this.input.need(Attr.email);
@@ -153,7 +230,7 @@ class Signup extends Loby {
     // });
     // await this.make_default_folers(hub)
     await this.setWallpaper(this.uid)
-    await this.send_signup_welcome(email)
+    await this._send_verification_email(this.uid, email)
 
     // Resolve pending hub invitations (from hub.add_contributors before account existed)
     try {
