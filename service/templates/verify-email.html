@@ -6,53 +6,145 @@
   <meta name="x-apple-disable-message-reformatting">
   <title><%= heading %></title>
 </head>
-<body style="margin:0;padding:0;background:#f2f2f7;-webkit-font-smoothing:antialiased;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:#f2f2f7;">
+<body style="margin:0;padding:0;background:#fff;-webkit-font-smoothing:antialiased;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fff;">
     <tr>
-      <td align="center" style="padding:20px 8px;text-align:center;">
-        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center" style="width:600px;max-width:100%;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden;">
+      <td align="center" style="padding:0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:100%;background:#fff;border:1px solid #d1d1d6;border-radius:8px;overflow:hidden;">
 
-          <!-- Header -->
+          <!-- Header: purple signature -->
           <tr>
-            <td bgcolor="#433cc5" align="center" style="padding:24px;background:#433cc5;text-align:center;border-radius:8px 8px 0 0;">
-              <img src="https://content.app.drumee.com/icons/logo.png" width="170" height="36" alt="Drumee" style="display:block;border:0;outline:0;text-decoration:none;margin:0 auto;">
+            <td bgcolor="#433cc5" align="center" style="padding:24px;background:#433cc5;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="line-height:0;">
+                <img src="https://content.app.drumee.com/icons/logo.png" width="172" height="34" alt="Drumee" style="display:block;border:0;outline:0;text-decoration:none;-ms-interpolation-mode:bicubic;">
+              </td></tr></table>
             </td>
           </tr>
 
-          <!-- Body -->
+          <!-- Main content -->
           <tr>
-            <td style="padding:32px;" align="center">
-              <h1 style="margin:0 0 8px 0;text-align:center;font-weight:600;font-size:24px;line-height:1.2;color:#282538;"><%= heading %></h1>
-              <p style="margin:0 0 24px 0;text-align:center;font-size:16px;line-height:1.4;color:#84848c;"><%= subheading %></p>
+            <td style="padding:32px;">
 
-              <p style="margin:0 0 16px 0;text-align:left;font-size:16px;line-height:1.5;color:#282538;"><%= hello %></p>
-              <p style="margin:0 0 24px 0;text-align:left;font-size:16px;line-height:1.5;color:#282538;"><%= intro %></p>
+              <!-- Headline -->
+              <h1 style="margin:0 0 12px 0;padding:0;text-align:center;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:600;font-size:24px;line-height:1.1;color:#34343a;">
+                <%= heading %>
+              </h1>
+              <p style="margin:0;padding:0;text-align:center;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:400;font-size:16px;line-height:1.4;color:#34343a;">
+                <%= subheading %>
+              </p>
+
+              <!-- 40px gap -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:40px;line-height:40px;font-size:0;">&nbsp;</td></tr></table>
+
+              <!-- Body -->
+              <p style="margin:0 0 16px 0;padding:0;text-align:left;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:400;font-size:16px;line-height:1.4;color:#34343a;">
+                <%= hello %>
+              </p>
+              <p style="margin:0;padding:0;text-align:left;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:400;font-size:16px;line-height:1.4;color:#34343a;">
+                <%= intro %>
+              </p>
+
+              <!-- 40px gap -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:40px;line-height:40px;font-size:0;">&nbsp;</td></tr></table>
 
               <!-- CTA button -->
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto 24px auto;">
-                <tr><td bgcolor="#433cc5" align="center" style="border-radius:8px;">
-                  <a href="<%= verify_url %>" style="display:inline-block;padding:14px 32px;font-weight:600;font-size:16px;color:#ffffff;text-decoration:none;border-radius:8px;"><%= button_label %></a>
-                </td></tr>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" bgcolor="#433cc5" style="background:#433cc5;border-radius:4px;">
+                    <a href="<%= verify_url %>" style="display:block;width:100%;background:#433cc5;color:#ffffff;text-decoration:none;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:600;font-size:16px;line-height:24px;text-align:center;padding:16px 24px;border-radius:4px;box-sizing:border-box;"><%= button_label %></a>
+                  </td>
+                </tr>
               </table>
 
-              <p style="margin:0 0 6px 0;text-align:center;font-size:14px;line-height:1.4;color:#84848c;"><%= fallback_label %></p>
-              <p style="margin:0 0 24px 0;text-align:center;font-size:14px;line-height:1.4;word-break:break-all;color:#433cc5;"><%= verify_url %></p>
+              <!-- 24px gap -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:24px;line-height:24px;font-size:0;">&nbsp;</td></tr></table>
+
+              <!-- Fallback link -->
+              <p style="margin:0 0 4px 0;padding:0;text-align:center;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:400;font-size:16px;line-height:1.4;color:#34343a;"><%= fallback_label %></p>
+              <p style="margin:0;padding:0;text-align:center;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:400;font-size:16px;line-height:1.4;word-break:break-all;color:#000000;"><%= verify_url %></p>
+
+              <!-- 40px gap -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:40px;line-height:40px;font-size:0;">&nbsp;</td></tr></table>
 
               <!-- Security note -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f2f2f7;border-radius:8px;">
-                <tr><td style="padding:16px;text-align:left;font-size:13px;line-height:1.5;color:#84848c;">
-                  <strong style="color:#282538;"><%= security_title %></strong><br><%= security_note %>
-                </td></tr>
+                <tr>
+                  <td style="padding:12px 24px;">
+                    <p style="margin:0 0 8px 0;padding:0;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:600;font-size:14px;line-height:20px;color:#0b0a21;">
+                      <img src="https://content.app.drumee.com/icons/security.png" width="20" height="20" alt="" style="vertical-align:middle;border:0;margin-right:6px;"><%= security_title %>
+                    </p>
+                    <p style="margin:0;padding:0;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:400;font-size:12px;line-height:1.4;color:#65656c;">
+                      <%= security_note %>
+                    </p>
+                  </td>
+                </tr>
               </table>
+
+              <!-- 40px gap -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:40px;line-height:40px;font-size:0;">&nbsp;</td></tr></table>
+
+              <!-- Divider -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr><td style="border-top:1px solid #d1d1d6;font-size:0;line-height:0;">&nbsp;</td></tr>
+              </table>
+
+              <!-- 40px gap -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:40px;line-height:40px;font-size:0;">&nbsp;</td></tr></table>
+
+              <!-- Need help -->
+              <p style="margin:0 0 12px 0;padding:0;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:700;font-size:16px;line-height:1.4;color:#0b0a21;">Need Help?</p>
+              <p style="margin:0 0 12px 0;padding:0;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:400;font-size:14px;line-height:1.4;color:#65656c;">Our customer support team is available to assist you:</p>
+
+              <p style="margin:0 0 12px 0;padding:0;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:400;font-size:14px;line-height:1.4;color:#65656c;">
+                <img src="https://content.app.drumee.com/icons/mail.png" width="18" height="18" alt="Email" style="vertical-align:middle;border:0;margin-right:8px;"><a href="mailto:support@drumee.io" style="color:#65656c;text-decoration:none;">support@drumee.io</a>
+              </p>
+              <p style="margin:0 0 12px 0;padding:0;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:400;font-size:14px;line-height:1.4;color:#65656c;">
+                <img src="https://content.app.drumee.com/icons/phone.png" width="18" height="18" alt="Phone" style="vertical-align:middle;border:0;margin-right:8px;">+1 (555) 123-4567
+              </p>
+              <p style="margin:0;padding:0;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:400;font-size:14px;line-height:1.4;color:#65656c;">
+                <img src="https://content.app.drumee.com/icons/clock.png" width="18" height="18" alt="Hours" style="vertical-align:middle;border:0;margin-right:8px;">Monday - Friday, 9:00 AM - 6:00 PM EST
+              </p>
+
             </td>
           </tr>
 
           <!-- Footer -->
           <tr>
-            <td bgcolor="#f2f2f7" align="center" style="background:#f2f2f7;border-top:1px solid #d1d1d6;padding:24px 32px;text-align:center;">
-              <p style="margin:0;text-align:center;font-size:10px;line-height:1.4;color:#84848c;">&copy; <%= new Date().getFullYear() %> Drumee. All rights reserved.
-                &nbsp;|&nbsp;<a href="https://drumee.com/privacy/" style="color:#84848c;text-decoration:none;">Privacy Policy</a>
-              </p>
+            <td bgcolor="#f2f2f7" align="center" style="background:#f2f2f7;border-top:1px solid #d1d1d6;padding:32px;text-align:center;">
+
+              <!-- Social badges -->
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+                <tr>
+                  <td style="padding:0 4px;"><a href="https://x.com/drumee" style="text-decoration:none;"><span style="display:inline-block; width:32px;height:32px;line-height:32px;border-radius:50%;background:rgba(132,126,255,0.2);text-align:center;"><img src="https://content.app.drumee.com/icons/x.png" width="12" height="12" alt="X" style="vertical-align:middle;border:0;"></span></a></td>
+                  <td style="padding:0 4px;"><a href="https://discord.gg/drumee" style="text-decoration:none;"><span style="display:inline-block; width:32px;height:32px;line-height:32px;border-radius:50%;background:rgba(132,126,255,0.2);text-align:center;"><img src="https://content.app.drumee.com/icons/discord.png" width="12" height="12" alt="Discord" style="vertical-align:middle;border:0;"></span></a></td>
+                  <td style="padding:0 4px;"><a href="https://www.linkedin.com/company/drumee" style="text-decoration:none;"><span style="display:inline-block; width:32px;height:32px;line-height:32px;border-radius:50%;background:rgba(132,126,255,0.2);text-align:center;"><img src="https://content.app.drumee.com/icons/linkedin.png" width="12" height="12" alt="LinkedIn" style="vertical-align:middle;border:0;"></span></a></td>
+                  <td style="padding:0 4px;"><a href="https://www.tiktok.com/@drumee" style="text-decoration:none;"><span style="display:inline-block; width:32px;height:32px;line-height:32px;border-radius:50%;background:rgba(132,126,255,0.2);text-align:center;"><img src="https://content.app.drumee.com/icons/tiktok.png" width="12" height="12" alt="TikTok" style="vertical-align:middle;border:0;"></span></a></td>
+                  <td style="padding:0 4px;"><a href="https://www.instagram.com/drumee" style="text-decoration:none;"><span style="display:inline-block; width:32px;height:32px;line-height:32px;border-radius:50%;background:rgba(132,126,255,0.2);text-align:center;"><img src="https://content.app.drumee.com/icons/instagram.png" width="12" height="12" alt="Instagram" style="vertical-align:middle;border:0;"></span></a></td>
+                </tr>
+              </table>
+
+              <!-- 16px gap -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:16px;line-height:16px;font-size:0;">&nbsp;</td></tr></table>
+
+              <!-- Copyright -->
+              <p style="margin:0;padding:0;text-align:center;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:400;font-size:16px;line-height:1.4;color:#0b0a21;">&copy; <%= new Date().getFullYear() %> Drumee. All rights reserved.</p>
+
+              <!-- 16px gap -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:16px;line-height:16px;font-size:0;">&nbsp;</td></tr></table>
+
+              <!-- Bottom links -->
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+                <tr>
+                  <td style="padding:0 16px;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:400;font-size:16px;line-height:1.4;color:#282538;">
+                    <img src="https://content.app.drumee.com/icons/world.png" width="18" height="18" alt="" style="vertical-align:middle;border:0;margin-right:8px;"><a href="https://drumee.org" style="color:#282538;text-decoration:none;">drumee.org</a>
+                  </td>
+                  <td style="border-left:1px solid #d1d1d6;font-size:0;line-height:0;">&nbsp;</td>
+                  <td style="padding:0 16px;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:400;font-size:16px;line-height:1.4;color:#282538;">
+                    <a href="https://drumee.com/privacy/" style="color:#282538;text-decoration:none;">Privacy Policy</a>
+                  </td>
+                </tr>
+              </table>
+
             </td>
           </tr>
 

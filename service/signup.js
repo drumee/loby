@@ -122,23 +122,22 @@ class Signup extends Loby {
       }
       const homepath = this.input.homepath();
       const verify_url = `${homepath}#/welcome/verify?token=${encodeURIComponent(token)}`;
-      const ulang = this.input.ua_language();
-      const lex = Cache.lex(ulang);
+      // NOTE: Cache.lex() returns the key name itself for keys missing from the
+      // lexicon, so `lex._x || "fallback"` keeps the raw key. These verification
+      // strings aren't in the lexicon, so use literal copy here.
       const data = {
-        heading: lex._verify_your_email || "Verify Your Email Address",
-        subheading: lex._thanks_for_registering || "Thank you for registering with Drumee",
-        hello: (lex._hello_x || "Hello %s,").format(_email),
-        intro: lex._verify_email_intro ||
-          "Welcome to Drumee! To complete your registration, please verify your email address by clicking the button below.",
-        button_label: lex._verify_email_button || "Verify Email Address",
+        heading: "Verify Your Email Address",
+        subheading: "Thank you for registering with Drumee",
+        hello: `Hello ${_email},`,
+        intro: "Welcome to Drumee! We're excited to have you onboard. To complete your registration and access our services, please verify your email address by clicking the button below.",
+        button_label: "Verify Email Address",
         verify_url,
-        fallback_label: lex._verify_email_fallback || "Or copy and paste this link into your browser:",
-        security_title: lex._security_note_title || "Security Note",
-        security_note: lex._verify_email_expiry ||
-          "This verification link will expire in 24 hours. For your security, please do not share this email with anyone.",
+        fallback_label: "Or copy and paste this link into your browser:",
+        security_title: "Security Note",
+        security_note: "This verification link will expire in 24 hours. For your security, please do not share this email with anyone.",
       };
       const msg = new Messenger({
-        subject: lex._verify_your_email || "Verify Your Email Address",
+        subject: "Verify your Drumee email address",
         recipient: _email,
         handler: this.exception.email,
       });
