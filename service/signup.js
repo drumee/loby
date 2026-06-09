@@ -164,25 +164,53 @@ class Signup extends Loby {
    * Re-mint the verification token and re-send the link. Public/anonymous.
    */
   async resend_verification() {
-    // Prefer the email passed by the client (the "Check your inbox" screen
-    // knows it); fall back to the pre-signup signup_data row by session.
-    // The session lookup can miss once create_account has signed the user in,
-    // so the explicit email is the reliable source.
+    // Resolve the target account using the strongest signal available:
+    //   1. an explicit email — the "Check your inbox" screen carries it.
+    //   2. a verify token (even an expired one) — the failed-verify screen has
+    //      it but not the email. The verification row survives until the link
+    //      is successfully used, so token -> drumate_id -> staged
+    //      unverified_email still resolves.
+    //   3. the pre-signup signup_data row keyed by session (best-effort; there
+    //      is no session once we stopped auto-login, so this rarely hits).
     let email = this.input.get(Attr.email);
+    let uid = null;
+
+    if (!email) {
+      const token = this.input.get(Attr.token);
+      if (token) {
+        let row = await this.yp.await_query(
+          "SELECT d.id AS id, d.unverified_email AS email " +
+          "FROM verification v INNER JOIN drumate d ON d.id = v.drumate_id " +
+          "WHERE v.token = ? LIMIT 1", token
+        );
+        if (isArray(row)) row = row[0];
+        row = row || {};
+        uid = row.id || null;
+        email = row.email;
+      }
+    }
+
     if (!email) {
       const sessionId = this.input.sid();
       const sql = `SELECT email FROM ${this.app_db}.signup_data WHERE session_id=?`;
-      const row = await this.db.await_query(sql, sessionId) || {};
+      let row = await this.db.await_query(sql, sessionId) || {};
+      if (isArray(row)) row = row[0] || {};
       email = row.email;
     }
+
     if (!email) {
       return this.output.data({ status: "no_pending_signup" });
     }
-    const user = await this.yp.await_proc("drumate_exists", email);
-    if (!user || !user.id) {
-      return this.output.data({ status: "no_account", email });
+
+    if (!uid) {
+      const user = await this.yp.await_proc("drumate_exists", email);
+      if (!user || !user.id) {
+        return this.output.data({ status: "no_account", email });
+      }
+      uid = user.id;
     }
-    const sent = await this._send_verification_email(user.id, email);
+
+    const sent = await this._send_verification_email(uid, email);
     this.output.data({ status: sent ? "ok" : "send_failed", sent, email });
   }
 
