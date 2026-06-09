@@ -156,8 +156,54 @@ class Signup extends Loby {
    */
   async verify_email() {
     const token = this.input.need(Attr.token);
+    // Capture the account email BEFORE the proc consumes the verification row
+    // (drumate_verify_email_token deletes the token on success, so it can't be
+    // resolved afterwards). The client carries this email to send_welcome.
+    let row = await this.yp.await_query(
+      "SELECT IFNULL(d.unverified_email, JSON_VALUE(d.profile, '$.email')) AS email " +
+      "FROM verification v INNER JOIN drumate d ON d.id = v.drumate_id WHERE v.token = ? LIMIT 1",
+      token
+    );
+    if (isArray(row)) row = row[0];
+    row = row || {};
     const res = await this.yp.await_proc("drumate_verify_email_token", token) || {};
-    this.output.data({ verified: res.verified === 1 ? 1 : 0 });
+    const verified = res.verified === 1 ? 1 : 0;
+    this.output.data({ verified, email: verified ? (row.email || "") : "" });
+  }
+
+  /**
+   * Render + send the "account all set" welcome email (signup-completed.html).
+   */
+  async _send_signup_completed_email(_email) {
+    try {
+      const homepath = this.input.homepath();
+      const home = `${homepath}#/desk`;
+      const msg = new Messenger({
+        subject: "Your Drumee account is all set",
+        recipient: _email,
+        handler: this.exception.email,
+      });
+      const tpl = resolve(__dirname, "./templates/signup-completed.html");
+      const html = msg.renderFrom(tpl, { home, email: _email });
+      await msg.send({ html });
+      return 1;
+    } catch (e) {
+      this.warn("[_send_signup_completed_email] failed", e);
+      return 0;
+    }
+  }
+
+  /**
+   * Send the welcome ("all set") email. Public/anonymous — fired by the
+   * "Back to Drumee" button on the email-confirmed screen.
+   */
+  async send_welcome() {
+    const email = this.input.get(Attr.email);
+    if (!email) {
+      return this.output.data({ status: "no_email" });
+    }
+    const sent = await this._send_signup_completed_email(email);
+    this.output.data({ status: sent ? "ok" : "send_failed", sent });
   }
 
   /**
