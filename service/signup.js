@@ -201,35 +201,23 @@ class Signup extends Loby {
     if (data.user && data.user.email && data.firstname) {
       args = { ...data.user, password }
     }
-    let status = await super.create_account(args)
-    let res = await this.session.signin({ uid: email, email, password });
-    res.status = "ok";
-    if (res.user && res.user.firstname) {
-      status.completed = 1
-    } else {
-      status.completed = 0
+    // Create the account WITHOUT establishing a session (autosignin = 0).
+    // The user stays unauthenticated (registration_verified = 0) until they
+    // click the email-verification link. Auto-logging in here would let a page
+    // refresh escape the signup flow into the authenticated desk/onboarding
+    // before the email is ever verified.
+    const drumate = await super.create_account(args, 0);
+    if (!drumate || drumate.error) {
+      return this.output.data({ status: (drumate && drumate.status) || "internal_error", email });
     }
-    this.user.set(res.user);
-    this.uid = res.user.id;
-    await this.make_default_folers(res.user)
-    // let hub = await this.createHub({
-    //   filename: uniqueNamesGenerator(hubNameConfig),
-    //   owner_id: res.user.id,
-    //   domain: res.user.domain,
-    //   area: Attr.private,
-    //   user_db: res.user.db_name
-    // });
-    // await this.make_default_folers(hub)
-    // hub = await this.createHub({
-    //   filename: uniqueNamesGenerator(hubNameConfig),
-    //   owner_id: res.user.id,
-    //   domain: res.user.domain,
-    //   area: Attr.share,
-    //   user_db: res.user.db_name
-    // });
-    // await this.make_default_folers(hub)
-    await this.setWallpaper(this.uid)
-    await this._send_verification_email(this.uid, email)
+    // drumate carries db_name/home_id; resolve the canonical id for the
+    // procs that need it (drumate_create's return may omit it).
+    const acct = await this.yp.await_proc("drumate_exists", email) || {};
+    const uid = acct.id || drumate.id;
+
+    await this.make_default_folers(drumate)
+    await this.setWallpaper(uid)
+    await this._send_verification_email(uid, email)
 
     // Resolve pending hub invitations (from hub.add_contributors before account existed)
     try {
@@ -238,7 +226,8 @@ class Signup extends Loby {
       this.warn('[create_account] Failed to resolve pending_invitation for', email, e && e.message);
     }
 
-    this.output.data(res);
+    // No session payload — the client shows "Check your inbox" on status: ok.
+    this.output.data({ status: "ok", email });
   }
 
   /**
