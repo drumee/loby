@@ -131,7 +131,8 @@ class Goggle extends Loby {
     const home = `https://${res.domain}${endpoint_path}/`;
     if (!res.error) {
       const tpl = resolve(__dirname, './templates/signup-completed.html');
-      this.sendHtml({ ...res, home }, tpl)
+      // OAuth users are already signed in — auto-continue to the desk.
+      this.sendHtml({ ...res, home, auto_redirect: 1 }, tpl)
     }
   }
 
