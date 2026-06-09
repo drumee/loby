@@ -207,6 +207,28 @@ class Signup extends Loby {
   }
 
   /**
+   * Report whether the account for an email has verified its address.
+   * Public/anonymous — polled by the "Check your inbox" screen so it can move
+   * the user on to sign-in once they click the link (often on another device).
+   */
+  async check_verification() {
+    const email = this.input.get(Attr.email);
+    if (!email) {
+      return this.output.data({ verified: 0 });
+    }
+    const user = await this.yp.await_proc("drumate_exists", email);
+    if (!user || !user.id) {
+      return this.output.data({ verified: 0 });
+    }
+    let row = await this.yp.await_query(
+      "SELECT registration_verified AS rv FROM drumate WHERE id=? LIMIT 1", user.id
+    );
+    if (isArray(row)) row = row[0];
+    row = row || {};
+    this.output.data({ verified: row.rv == 1 ? 1 : 0 });
+  }
+
+  /**
    * Re-mint the verification token and re-send the link. Public/anonymous.
    */
   async resend_verification() {

@@ -48,6 +48,13 @@
         "src": "anonymous",
         "fast_check": "public-api"
       }
+    },
+    "check_verification": {
+      "scope": "hub",
+      "permission": {
+        "src": "anonymous",
+        "fast_check": "public-api"
+      }
     }
   },
   "modules": {
