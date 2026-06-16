@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Drumee account is all set!</title>
+  <% if (typeof auto_redirect !== 'undefined' && auto_redirect) { %>
+  <!-- Existing OAuth sign-in: session is already established, go straight to
+       the desk without showing the welcome card. -->
+  <script>location.replace('<%= home %>');</script>
+  <% } %>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: #f2f2f7;
+      font-family: 'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+      -webkit-font-smoothing: antialiased;
+      color: #34343a;
+    }
+    .card {
+      width: 100%;
+      max-width: 440px;
+      background: #fff;
+      border: 1px solid #d1d1d6;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 12px 40px rgba(11, 10, 33, 0.12);
+    }
+    .card__header {
+      background: #433cc5;
+      padding: 24px;
+      text-align: center;
+      line-height: 0;
+    }
+    .card__header img { display: block; margin: 0 auto; border: 0; }
+    .card__body { padding: 32px; }
+    .card__title {
+      margin: 0;
+      text-align: center;
+      font-weight: 600;
+      font-size: 22px;
+      line-height: 1.2;
+      color: #34343a;
+    }
+    .card__email {
+      margin: 24px 0 0;
+      text-align: center;
+      font-weight: 600;
+      font-size: 15px;
+      color: #433cc5;
+      word-break: break-all;
+    }
+    .card__text {
+      margin: 16px 0 0;
+      text-align: center;
+      font-weight: 400;
+      font-size: 15px;
+      line-height: 1.5;
+      color: #65656c;
+    }
+    .card__cta {
+      display: block;
+      margin-top: 32px;
+      width: 100%;
+      background: #433cc5;
+      color: #fff;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 16px;
+      line-height: 24px;
+      text-align: center;
+      padding: 16px 24px;
+      border-radius: 8px;
+    }
+    .card__footer {
+      margin: 24px 0 0;
+      text-align: center;
+      font-weight: 400;
+      font-size: 13px;
+      color: #9a9aa0;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="card__header">
+      <img src="https://content.app.drumee.com/icons/logo.png" width="172" height="34" alt="Drumee">
+    </div>
+    <div class="card__body">
+      <h1 class="card__title">Your account is all set!<br>Thanks for joining us.</h1>
+      <% if (typeof email !== 'undefined' && email) { %>
+      <p class="card__email"><%= email %></p>
+      <% } %>
+      <p class="card__text">
+        Your Drumee account has been successfully created. We're glad to have you &mdash; let's get your workspace ready.
+      </p>
+      <a id="goto-desk" class="card__cta" href="<%= home %>">Discover your Drumee desk</a>
+      <p class="card__footer">The Drumee team</p>
+    </div>
+  </div>
+</body>
+</html>

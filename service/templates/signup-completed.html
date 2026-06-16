@@ -164,16 +164,5 @@
       </td>
     </tr>
   </table>
-  <% if (typeof auto_redirect !== 'undefined' && auto_redirect) { %>
-  <script>
-    // OAuth (Google/Apple) sign-up: the session is already established, so
-    // auto-continue to the desk. Only the OAuth callers pass auto_redirect;
-    // the form-flow welcome email omits it (and email clients strip <script>).
-    setTimeout(function () {
-      var a = document.getElementById('goto-desk');
-      if (a) a.click();
-    }, 300);
-  </script>
-  <% } %>
 </body>
 </html>

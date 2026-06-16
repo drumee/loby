@@ -230,9 +230,12 @@ class Register extends Loby {
     this.debug("AAAA:221", res)
     const home = `https://${res.domain}${endpoint_path}/`;
     if (!res.error) {
-      const tpl = resolve(__dirname, './templates/signup-completed.html');
-      // OAuth users are already signed in — auto-continue to the desk.
-      this.sendHtml({ ...res, home, auto_redirect: 1 }, tpl)
+      const tpl = resolve(__dirname, './templates/account-created.html');
+      // New OAuth account: show the welcome card (auto_redirect off) so the
+      // user lands on it; the CTA continues to the desk, where the onboarding
+      // gate kicks in. Existing sign-ins skip the card and go straight home.
+      const is_new = res.method === 'signup';
+      this.sendHtml({ ...res, home, auto_redirect: is_new ? 0 : 1 }, tpl)
     }
   }
 

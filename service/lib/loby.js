@@ -33,10 +33,13 @@ class Account extends Entity {
       email,
       firstname = "",
       password,
+      onboarded,
     } = data;
-    let onboarded = 1;
-    if (!firstname) {
-      onboarded = 0;
+    // OAuth signups pass onboarded explicitly (always 0 — a Google/Apple name
+    // says nothing about whether the user has done the industry/role/team-size
+    // onboarding). Other callers fall back to the name-presence heuristic.
+    if (onboarded == null) {
+      onboarded = firstname ? 1 : 0;
     }
     let username = firstname || email.split('@')[0];
     username = await this.yp.await_func("ensure_username", { username: username.toLowerCase(), domain });
@@ -127,7 +130,11 @@ class Account extends Entity {
     const createData = {
       email,
       firstname: fullname || firstname,
-      password: uniqueId() // OAuth users don't have password, set default
+      password: uniqueId(), // OAuth users don't have password, set default
+      // Brand-new OAuth account: force onboarding regardless of the name Google
+      // supplied. Without this, create_account's name-presence heuristic flags
+      // the account onboarded=1 and the desk gate skips onboarding entirely.
+      onboarded: 0
     };
 
     const creationResult = await this.create_account(createData, 0) || {};
