@@ -228,6 +228,17 @@ class Register extends Loby {
     profile.provider = 'apple';
     let res = await this.handleOAuthCallback(profile);
     this.debug("AAAA:221", res)
+    // 2FA required: the session is pending, not finalized. Keep the pending
+    // session cookie (sendHtml/setAuthorization) and bounce the browser to the
+    // signin app's OTP screen, which finalizes via oauth.verify_otp.
+    if (res.status === 'otp_required') {
+      const redirect = `https://${main_domain}${endpoint_path}/#/welcome/signin?oauth_mfa=1&email=${encodeURIComponent(res.email || '')}`;
+      const tpl = resolve(__dirname, './templates/otp-challenge.html');
+      // res.session_id is the pending cookie's id (original signin session) —
+      // sendHtml binds the browser's authorization to it.
+      this.sendHtml({ ...res, redirect }, tpl);
+      return;
+    }
     const home = `https://${res.domain}${endpoint_path}/`;
     if (!res.error) {
       const tpl = resolve(__dirname, './templates/account-created.html');

@@ -1,0 +1,24 @@
+{
+  "services": {
+    "verify_otp": {
+      "doc": "Verify the 2FA OTP for a pending OAuth sign-in and finalize the session.",
+      "scope": "hub",
+      "permission": {
+        "src": "anonymous",
+        "fast_check": "public-api"
+      }
+    },
+    "resend_otp": {
+      "doc": "Resend the 2FA OTP email for a pending OAuth sign-in.",
+      "scope": "hub",
+      "permission": {
+        "src": "anonymous",
+        "fast_check": "public-api"
+      }
+    }
+  },
+  "modules": {
+    "private": "service/oauth",
+    "public": "service/oauth"
+  }
+}

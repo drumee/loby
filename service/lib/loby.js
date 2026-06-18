@@ -16,11 +16,27 @@
  */
 
 const {
-  sysEnv, uniqueId, Attr, toArray, Cache
+  sysEnv, uniqueId, Attr, toArray, Cache, Messenger
 } = require("@drumee/server-essentials");
 const { Entity } = require("@drumee/server-core");
 const { readFileSync } = require("fs");
+const { resolve } = require("path");
 const { template } = require("lodash");
+
+// Configured envelope sender (email.json -> auth.user), resolved once. Used to
+// build a display-name From ("Drumee" <sender>) for outbound mail, matching the
+// password-login OTP path in server-team.
+let _butlerSender;
+function butlerSender() {
+  if (_butlerSender !== undefined) return _butlerSender;
+  try {
+    const f = resolve(sysEnv().credential_dir, "email.json");
+    _butlerSender = (JSON.parse(readFileSync(f, "utf8")).auth || {}).user || null;
+  } catch (e) {
+    _butlerSender = null;
+  }
+  return _butlerSender;
+}
 
 class Account extends Entity {
 
@@ -271,6 +287,26 @@ class Account extends Entity {
         return res;
       }
 
+      // CASE D: 2FA required. session_login_with_oauth left the cookie in an
+      // 'otp_pending' state instead of finalizing it. Mint + email an OTP and
+      // hand off to the signin app's OTP screen (which finalizes the same
+      // pending cookie via oauth.verify_otp -> session_login_otp).
+      if (sessionData && sessionData.error_code === 'otp_required') {
+        this.debug(`[Auth] 2FA required for ${email} (${provider})`);
+        await this._send2faOtp(sessionData.id, sessionData.email || email);
+        return {
+          status: 'otp_required',
+          email: sessionData.email || email,
+          id: sessionData.id,
+          // The pending cookie is keyed by the original signin session
+          // (oauth_state.session_id), NOT this callback request's sid. The
+          // redirect must bind the browser to THIS session so the SPA's later
+          // oauth.verify_otp call resolves the right pending cookie.
+          session_id,
+          provider
+        };
+      }
+
       this.warn(`[Auth] Unexpected OAuth callback result:`, sessionData);
       return { status: 'error', error: 'unexpected_error' };
 
@@ -281,8 +317,50 @@ class Account extends Entity {
   }
 
   /**
- * 
- * @returns 
+   * Mint a one-time code for `_uid` and email it to `_email`, reusing the
+   * shared otp.html template. The secret stays server-side; the signin app
+   * later submits only the code (oauth.verify_otp resolves the secret from the
+   * pending session). Mirrors server-team's _send2faOtpEmail.
+   * @param {string} _uid
+   * @param {string} _email
+   */
+  async _send2faOtp(_uid, _email) {
+    const token = uniqueId();
+    const otp = await this.yp.await_proc("otp_create", _uid, token);
+    if (!otp || !otp.code) {
+      this.warn("[Auth] otp_create returned no code", { _uid });
+      return 0;
+    }
+    const lang = this.input.ua_language() || "en";
+    const lex = Cache.lex(lang);
+    const data = {
+      heading: lex._your_otp,
+      code: otp.code,
+      why_this_otp: lex._why_this_otp,
+    };
+    const msg = new Messenger({
+      subject: lex._your_otp,
+      recipient: _email,
+      handler: this.exception && this.exception.email,
+    });
+    try {
+      const tpl = resolve(__dirname, "../templates/otp.html");
+      const html = msg.renderFrom(tpl, data);
+      // Display-name From ("Drumee" <butler@...>) so the inbox shows "Drumee"
+      // instead of the raw sender address. Falls back to the default sender.
+      const sender = butlerSender();
+      const from = sender ? `"Drumee" <${sender}>` : undefined;
+      await msg.send(from ? { html, from } : { html });
+      return 1;
+    } catch (e) {
+      this.warn("[Auth] 2FA OTP email send failed", e);
+      return 0;
+    }
+  }
+
+  /**
+ *
+ * @returns
  */
   _authorization() {
     let auth = this.input.authorization() || {};
