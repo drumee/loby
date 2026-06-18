@@ -188,6 +188,15 @@ class Account extends Entity {
 
     this.debug(`[Auth] OAuth account linked for user ${newUserId}, ${session_id}`);
 
+    // Brand-new OAuth account: seed the default top-level folders (Photos,
+    // Documents, Videos) just like the email-signup path (signup.create_account).
+    // creationResult carries the db_name/home_id make_default_folers needs.
+    try {
+      await this.make_default_folers(creationResult);
+    } catch (e) {
+      this.warn(`[Auth] Failed to create default folders for ${email}:`, e && e.message);
+    }
+
     // Get full session data
     const domain_name = this.input.host();
     let finalSessionData = await this.yp.await_proc(
