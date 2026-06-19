@@ -162,8 +162,18 @@ class Register extends Loby {
       }
     }
 
+    // Apple sends `is_private_email` as a string ("true"/"false") on most
+    // tokens, occasionally as a boolean. Normalize to 1/0. When true, email is
+    // an @privaterelay.appleid.com forwarding address (user chose "Hide My
+    // Email") — there is no way to recover the real address; mail must be sent
+    // from an address registered in Apple's Sign in with Apple email sources or
+    // the relay silently drops it.
+    const is_private_email =
+      payload.is_private_email === true || payload.is_private_email === 'true' ? 1 : 0;
+
     return {
       email: payload.email,
+      is_private_email,
       provider_id: payload.sub,
       firstname,
       lastname,

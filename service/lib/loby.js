@@ -123,7 +123,7 @@ class Account extends Entity {
 
   /** */
   async addUser(profile) {
-    let { email, provider_id, provider, firstname, lastname, access_token, refresh_token } = profile;
+    let { email, provider_id, provider, firstname, lastname, access_token, refresh_token, is_private_email = 0 } = profile;
     this.debug(`[Auth] addUser...`);
     let session_id = this.input.sid()
 
@@ -173,8 +173,8 @@ class Account extends Entity {
     // Link OAuth account with rollback on failure
     try {
       await this.yp.await_query(
-        'INSERT INTO oauth_accounts (user_id, provider, provider_user_id, email, ctime, mtime, access_token, refresh_token) VALUES (?, ?, ?, ?, UNIX_TIMESTAMP(), UNIX_TIMESTAMP(), ?, ?)',
-        newUserId, provider, provider_id, email, access_token, refresh_token
+        'INSERT INTO oauth_accounts (user_id, provider, provider_user_id, email, is_private_email, ctime, mtime, access_token, refresh_token) VALUES (?, ?, ?, ?, ?, UNIX_TIMESTAMP(), UNIX_TIMESTAMP(), ?, ?)',
+        newUserId, provider, provider_id, email, is_private_email, access_token, refresh_token
       );
     } catch (linkError) {
       this.warn(`[Auth] Failed to link OAuth. Rolling back...`, linkError.message);
