@@ -15,6 +15,14 @@
         "src": "anonymous",
         "fast_check": "public-api"
       }
+    },
+    "cancel_otp": {
+      "doc": "Abandon a pending OAuth 2FA sign-in (Back to sign in): delete the otp_pending cookie so the signin page no longer bounces to the OTP screen.",
+      "scope": "hub",
+      "permission": {
+        "src": "anonymous",
+        "fast_check": "public-api"
+      }
     }
   },
   "modules": {

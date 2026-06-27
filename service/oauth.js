@@ -64,6 +64,26 @@ class OAuth extends Loby {
     await this._send2faOtp(pending.uid, pending.email);
     this.output.data({ status: 'ok' });
   }
+
+  /**
+   * Abandon the pending OAuth 2FA for the current session — the "Back to sign
+   * in" action on the signin app's OTP screen. session_logout can't clear this
+   * state (it deletes the cookie by uid, which a not-yet-authenticated
+   * otp_pending session doesn't have), so the otp_pending cookie would survive
+   * and the signin page would keep bouncing to the OTP screen. We therefore
+   * delete the pending cookie directly by session id. Best-effort and
+   * idempotent: a session with no pending cookie is a no-op.
+   */
+  async cancel_otp() {
+    const sid = this.input.sid();
+    if (sid) {
+      await this.yp.await_query(
+        "DELETE FROM cookie WHERE id = ? AND status = 'otp_pending'",
+        sid
+      );
+    }
+    this.output.data({ status: 'ok' });
+  }
 }
 
 module.exports = OAuth;
