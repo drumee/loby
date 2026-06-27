@@ -42,8 +42,12 @@ class Plan extends Entity {
       this.uid, name, domain.name, ident, domain.id, recds
     );
 
+    // yp.plan was migrated to the Stripe catalog schema: `capacity`->`quota`,
+    // `name`->`plan_code`, and there can be several rows per plan_code (e.g.
+    // pro/month + pro/year, same quota JSON) — LIMIT 1 keeps one so the insert
+    // can't violate quota's (domain_id, payer_id) key.
     await this.yp.await_query(
-      `INSERT INTO quota (domain_id, payer_id, quota) SELECT ?, ?, capacity FROM plan WHERE name=?`,
+      `INSERT INTO quota (domain_id, payer_id, quota) SELECT ?, ?, plan.quota FROM plan WHERE plan.plan_code=? LIMIT 1`,
       domain.id, this.uid, plan
     )
 
