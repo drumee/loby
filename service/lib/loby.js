@@ -51,8 +51,18 @@ class Account extends Entity {
       password,
       onboarded,
       ref = "",                // referral handle recovered from oauth_state
+      utm,                     // UTM campaign params (source attribution)
     } = data;
     ref = String(ref || "").trim().toLowerCase().slice(0, 64);
+    // Sanitize UTM to the three known keys — persisted as profile.utm and read
+    // by the analytics signup-source attribution alongside ref.
+    let _utm = {};
+    if (utm && typeof utm === "object") {
+      for (const k of ["utm_source", "utm_medium", "utm_campaign"]) {
+        const v = (utm[k] || "").toString().trim().slice(0, 64);
+        if (v) _utm[k] = v;
+      }
+    }
     // OAuth signups pass onboarded explicitly (always 0 — a Google/Apple name
     // says nothing about whether the user has done the industry/role/team-size
     // onboarding). Other callers fall back to the name-presence heuristic.
@@ -83,6 +93,7 @@ class Account extends Entity {
       // Referral attribution — read by the analytics plugin
       // (referrals / signup_sources / referral_members procs).
       ...(ref ? { ref } : {}),
+      ...(Object.keys(_utm).length ? { utm: _utm } : {}),
     }
 
     let user = await this.yp.await_proc("drumate_create", password, profile);

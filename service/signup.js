@@ -293,10 +293,25 @@ class Signup extends Loby {
       return this.output.data({ status: "user_exists", email });
     }
     let data = await this.db.await_proc(`${this.app_db}.get_signup_info`, { email }) || {};
+    // Referral attribution — the signup UI forwards ?ref=<member> (also from
+    // localStorage['drumee_ref']). Thread it into args so super.create_account
+    // persists it as profile.$.ref (read by the analytics referrals /
+    // signup_sources / users_list procs). Without this, email signups drop ref.
+    const ref = (this.input.get("ref") || "").toString().trim().toLowerCase().slice(0, 64);
+    // UTM campaign params — the signup UI forwards utm_source/utm_medium/
+    // utm_campaign as flat keys. Thread them into args so super.create_account
+    // persists profile.utm. Without this, email signups drop UTM attribution.
+    const utm = {};
+    for (const k of ["utm_source", "utm_medium", "utm_campaign"]) {
+      const v = (this.input.get(k) || "").toString().trim().slice(0, 64);
+      if (v) utm[k] = v;
+    }
     let args = { email, password };
     if (data.user && data.user.email && data.firstname) {
       args = { ...data.user, password }
     }
+    if (ref) args.ref = ref;
+    if (Object.keys(utm).length) args.utm = utm;
     // Create the account WITHOUT establishing a session (autosignin = 0).
     // The user stays unauthenticated (registration_verified = 0) until they
     // click the email-verification link. Auto-logging in here would let a page
