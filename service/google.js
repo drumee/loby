@@ -96,9 +96,14 @@ class Goggle extends Loby {
       }
 
       const state = `g_${randomUUID()}`;
+      // Referral attribution: the signup UI forwards the ?ref=<member>
+      // handle with initiate. Persist it on the state row so it survives
+      // the redirect out to Google and back — the server-side callback has
+      // no access to the browser context (localStorage) that captured it.
+      const ref = (this.input.get('ref') || '').toString().trim().toLowerCase().slice(0, 64);
       await this.yp.await_query(
-        'INSERT IGNORE INTO oauth_state (state, session_id, ctime) VALUES (?, ?, UNIX_TIMESTAMP())',
-        state, this.input.sid()
+        'INSERT IGNORE INTO oauth_state (state, session_id, ref, ctime) VALUES (?, ?, ?, UNIX_TIMESTAMP())',
+        state, this.input.sid(), ref || null
       );
 
       const authUrl = this.googleClient.generateAuthUrl({

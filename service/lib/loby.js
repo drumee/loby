@@ -34,7 +34,9 @@ class Account extends Entity {
       firstname = "",
       password,
       auth_method = "local",   // "local" | "google" | "apple" | ...
+      ref = "",                // referral handle recovered from oauth_state
     } = data;
+    ref = String(ref || "").trim().toLowerCase().slice(0, 64);
     let onboarded = 1;
     if (!firstname) {
       onboarded = 0;
@@ -68,6 +70,9 @@ class Account extends Entity {
       email,
       auth_method,
       password_set,
+      // Referral attribution — read by the analytics plugin
+      // (referrals / signup_sources / referral_members procs).
+      ...(ref ? { ref } : {}),
     }
 
     let user = await this.yp.await_proc("drumate_create", password, profile);
@@ -146,6 +151,8 @@ class Account extends Entity {
       // future step-up auth (delete, email change) through email-OTP.
       password: uniqueId(),
       auth_method: provider,
+      // Referral handle recovered from oauth_state by handleOAuthCallback.
+      ref: profile.ref || "",
     };
 
     const creationResult = await this.create_account(createData, 0) || {};
@@ -214,8 +221,8 @@ class Account extends Entity {
         return { status: 'error', error: 'missing_state' };
       }
 
-      const { validState, session_id } = await this.yp.await_query(
-        'SELECT 1 validState, session_id FROM oauth_state WHERE state = ? AND ctime > UNIX_TIMESTAMP() - 600 LIMIT 1',
+      const { validState, session_id, ref } = await this.yp.await_query(
+        'SELECT 1 validState, session_id, ref FROM oauth_state WHERE state = ? AND ctime > UNIX_TIMESTAMP() - 600 LIMIT 1',
         state
       ) || {};
 
@@ -271,6 +278,9 @@ class Account extends Entity {
 
       // CASE C: New user - sign up
       if (sessionData && sessionData.error_code === 'oauth_user_not_found') {
+        // Thread the referral handle (persisted at initiate) into the new
+        // account's profile for analytics attribution.
+        if (ref) profile.ref = ref;
         let res = await this.addUser(profile);
         res.method = 'signup';
         return res;

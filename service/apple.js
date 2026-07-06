@@ -197,9 +197,12 @@ class Register extends Loby {
       const redirect_uri = `https://${main_domain}${svc_location}/apple.callback`;
 
       const state = `a_${randomUUID()}`;
+      // Referral attribution: same as google.initiate — persist the ref on
+      // the state row so the server-side callback can recover it.
+      const ref = (this.input.get('ref') || '').toString().trim().toLowerCase().slice(0, 64);
       await this.yp.await_query(
-        'INSERT IGNORE INTO oauth_state (state, session_id, ctime) VALUES (?, ?, UNIX_TIMESTAMP())',
-        state, this.input.sid()
+        'INSERT IGNORE INTO oauth_state (state, session_id, ref, ctime) VALUES (?, ?, ?, UNIX_TIMESTAMP())',
+        state, this.input.sid(), ref || null
       );
       const authUrl = `https://appleid.apple.com/auth/authorize?` +
         `client_id=${encodeURIComponent(service_id)}` +
