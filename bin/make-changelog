@@ -1,0 +1,74 @@
+#!/bin/bash
+# Generate/update loby/schemas/patches/changelog.txt from git history.
+#
+# Ported from schemas/bin/make-changelog, adapted for loby: the schema lives in
+# the schemas/ subtree (not class-prefixed dirs at the repo root), so we filter
+# git log to schemas/*.sql and strip the leading "schemas/" from each path, so
+# entries match the manifest convention (paths relative to loby/schemas).
+#
+# Newest-first: a "YYYY-MM-DD" header per date, two-space-indented SQL paths
+# under it, blank line between dates. New dates are prepended; existing content
+# is preserved. Descriptions in parentheses after a date are added by hand.
+script_dir="$(dirname "$(readlink -f "$0")")"
+repo_dir="$(dirname "$script_dir")"
+schemas_dir="$repo_dir/schemas"
+changelog="$schemas_dir/patches/changelog.txt"
+
+cd "$repo_dir"
+
+# Most recent BARE date already recorded (described headers are skipped so the
+# cutoff falls on the last machine-written entry).
+last_date=$(grep -m1 -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' "$changelog" 2>/dev/null)
+
+if [ -z "$last_date" ]; then
+  echo "No existing date found — processing all commits"
+  since_opt=""
+else
+  echo "Last recorded date: $last_date"
+  since_opt="--after=$last_date"
+fi
+
+tmpfile=$(mktemp /tmp/loby.changelog.XXXXXX)
+
+# Walk git log newest-first; first occurrence of each schemas/*.sql file = its
+# most recent commit date. Strip the "schemas/" prefix from the recorded path.
+git log $since_opt \
+    --diff-filter=AM \
+    --name-only \
+    --format="DATE:%cd" \
+    --date=format:"%Y-%m-%d" \
+    -- 'schemas/*.sql' \
+| awk -v cutoff="$last_date" '
+    /^DATE:/  { date = substr($0, 6); next }
+    /\.sql$/  {
+      path = $0; sub(/^schemas\//, "", path)
+      if (!seen[path] && date > cutoff) { print date "\t" path; seen[path] = 1 }
+    }
+' | sort -t$'\t' -k1,1r -k2,2 > "$tmpfile"
+
+if [ ! -s "$tmpfile" ]; then
+  echo "Nothing new since $last_date — changelog is up to date"
+  rm -f "$tmpfile"
+  exit 0
+fi
+
+new_entries=$(awk -F'\t' '
+  prev != $1 {
+    if (prev != "") printf "\n"
+    printf "%s\n", $1
+    prev = $1
+  }
+  { printf "  %s\n", $2 }
+' "$tmpfile")
+rm -f "$tmpfile"
+
+tmp_cl=$(mktemp /tmp/loby.changelog.XXXXXX)
+if [ -f "$changelog" ]; then
+  printf '%s\n\n' "$new_entries" > "$tmp_cl"
+  cat "$changelog" >> "$tmp_cl"
+else
+  printf '%s\n' "$new_entries" > "$tmp_cl"
+fi
+mv "$tmp_cl" "$changelog"
+
+echo "Updated $changelog"
