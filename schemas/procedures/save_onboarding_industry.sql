@@ -5,8 +5,9 @@ DROP PROCEDURE IF EXISTS `save_onboarding_industry`;
 DELIMITER $$
 
 CREATE PROCEDURE `save_onboarding_industry`(
-    IN _session_id VARCHAR(128) CHARACTER SET ascii,
-    IN _industry   VARCHAR(32)
+    IN _session_id     VARCHAR(128) CHARACTER SET ascii,
+    IN _industry       VARCHAR(32),
+    IN _industry_other VARCHAR(255)
 )
 BEGIN
     IF _session_id IS NULL OR _session_id = '' THEN
@@ -22,8 +23,9 @@ BEGIN
     END IF;
 
     UPDATE onboarding_responses
-    SET industry = _industry,
-        mtime    = UNIX_TIMESTAMP()
+    SET industry       = _industry,
+        industry_other = IF(_industry = 'other', NULLIF(TRIM(_industry_other), ''), NULL),
+        mtime          = UNIX_TIMESTAMP()
     WHERE session_id = _session_id;
 
     IF ROW_COUNT() = 0 THEN
