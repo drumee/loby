@@ -76,9 +76,10 @@ class Onboarding extends Entity {
   async save_industry() {
     const sessionId = this.input.sid();
     const industry = this.input.need('industry');
+    const industryOther = this.input.get('industry_other') || null;
     await this.db.await_proc(
       `${this.app_db}.save_onboarding_industry`,
-      sessionId, industry
+      sessionId, industry, industryOther
     );
     this.output.data({ success: true, message: 'Industry saved.', data: {} });
   }
@@ -89,9 +90,10 @@ class Onboarding extends Entity {
   async save_role() {
     const sessionId = this.input.sid();
     const role = this.input.need('role');
+    const roleOther = this.input.get('role_other') || null;
     await this.db.await_proc(
       `${this.app_db}.save_onboarding_role`,
-      sessionId, role
+      sessionId, role, roleOther
     );
     this.output.data({ success: true, message: 'Role saved.', data: {} });
   }
