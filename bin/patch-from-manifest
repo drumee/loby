@@ -1,0 +1,104 @@
+#!/bin/bash
+# Apply the loby schema patch manifest to every instance database that carries
+# the loby onboarding schema.
+#
+# Modeled on schemas/bin/patch-from-manifest, but adapted for loby:
+#   - loby's schema dirs are not class-prefixed (no yellow_page/ hub/ ...), so
+#     the target cannot be derived from the path. Instead we DISCOVER the target
+#     databases by the presence of a marker table (default: onboarding_responses),
+#     because loby's data lives in the per-instance <hex>_<hex> databases that
+#     get_db_name(hub_id)/userEntity.db_name resolve to at runtime.
+#   - each manifest file is applied to every discovered instance.
+#
+# Paths in the manifest are relative to loby/schemas. Files are applied in the
+# order they appear (migration first, then procedures).
+set -uo pipefail
+
+script_dir="$(dirname "$(readlink -f "$0")")"
+repo_dir="$(dirname "$script_dir")"
+schemas_dir="$repo_dir/schemas"
+manifest="$schemas_dir/patches/manifest.txt"
+
+# A DB is a patch target iff it contains this table (the loby onboarding schema).
+marker_table="onboarding_responses"
+
+dry_run=0
+only_db=""
+mysql_bin="$(command -v mariadb || command -v mysql)"
+
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [--manifest=FILE] [--db=NAME] [--marker=TABLE] [--dry-run]
+
+  --manifest=FILE  Manifest to apply (default: $manifest)
+  --db=NAME        Apply only to this database (skip discovery)
+  --marker=TABLE   Discovery marker table (default: $marker_table)
+  --dry-run        List target databases and files without applying anything
+EOF
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --manifest=*) manifest="${arg#*=}" ;;
+    --db=*)       only_db="${arg#*=}" ;;
+    --marker=*)   marker_table="${arg#*=}" ;;
+    --dry-run)    dry_run=1 ;;
+    -h|--help)    usage; exit 0 ;;
+    *) echo "Unknown argument: $arg" >&2; usage; exit 2 ;;
+  esac
+done
+
+[ -n "$mysql_bin" ] || { echo "No mariadb/mysql client found on PATH" >&2; exit 1; }
+[ -f "$manifest" ]  || { echo "Manifest not found: $manifest" >&2; exit 1; }
+
+# Best-effort: match the collation the schemas engine sets, to avoid
+# cross-schema collation mismatches during CREATE (needs privilege; ignored otherwise).
+"$mysql_bin" -e "SET GLOBAL character_set_collations='utf8mb4=utf8mb4_general_ci'" 2>/dev/null || true
+
+# Resolve target databases.
+if [ -n "$only_db" ]; then
+  targets="$only_db"
+else
+  targets="$("$mysql_bin" -N -B -e \
+    "SELECT table_schema FROM information_schema.tables WHERE table_name='${marker_table}'")"
+fi
+
+if [ -z "${targets// /}" ]; then
+  echo "No target databases (none contain table '${marker_table}'). Nothing to do."
+  exit 0
+fi
+
+# Manifest files, in order, skipping blank lines and # comments.
+mapfile -t files < <(grep -vE '^[[:space:]]*(#|$)' "$manifest")
+[ "${#files[@]}" -gt 0 ] || { echo "Manifest has no file entries." >&2; exit 1; }
+
+target_count="$(echo "$targets" | wc -w | tr -d ' ')"
+echo "Manifest : $manifest (${#files[@]} file(s))"
+echo "Targets  : ${target_count} database(s)"
+echo "Client   : $mysql_bin"
+[ "$dry_run" = "1" ] && echo "(dry run - nothing will be applied)"
+echo
+
+rc=0
+errf="$(mktemp)"
+for db in $targets; do
+  echo "==> ${db}"
+  for f in "${files[@]}"; do
+    path="${schemas_dir}/${f}"
+    if [ ! -f "$path" ]; then
+      echo "   ! missing file: ${f}" >&2; rc=1; continue
+    fi
+    if [ "$dry_run" = "1" ]; then
+      echo "   - would apply: ${f}"
+      continue
+    fi
+    if "$mysql_bin" "$db" < "$path" 2>"$errf"; then
+      echo "   OK  ${f}"
+    else
+      echo "   ERR ${f} -- $(tr '\n' ' ' <"$errf")" >&2
+      rc=1
+    fi
+  done
+done
+rm -f "$errf"
+exit $rc

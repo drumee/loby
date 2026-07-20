@@ -1,0 +1,17 @@
+# loby onboarding "Other -> type your own" patch manifest.
+#
+# Paths are relative to loby/schemas. Apply order matters: the idempotent
+# column migration MUST run before the procedures that read/write the columns.
+#
+# Do NOT add tables/onboarding_responses.sql here — that file begins with
+# `DROP TABLE IF EXISTS` and would destroy live data. Existing instances are
+# migrated with the ALTER patch below; the full table def is for fresh installs
+# only.
+#
+# Prerequisite: instances must already be on the onboarding v2 baseline
+# (alter_onboarding_responses_v2.sql). On a still-v1 instance the ALTER below
+# fails cleanly (no `industry` column to anchor AFTER) and is skipped.
+patches/alter_onboarding_responses_other.sql
+procedures/save_onboarding_industry.sql
+procedures/save_onboarding_role.sql
+procedures/get_onboarding_response.sql
