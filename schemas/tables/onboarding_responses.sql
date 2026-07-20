@@ -18,10 +18,14 @@ CREATE TABLE IF NOT EXISTS onboarding_responses (
     -- Step 2: kind of work
     industry VARCHAR(32) NULL
         COMMENT 'tech_software | creative_marketing | consulting_agency | legal_compliance | finance_accounting | healthcare | education | real_estate | ecommerce_retail | media_content | operations | other',
+    industry_other VARCHAR(255) NULL
+        COMMENT 'Free-text value when industry = other',
 
     -- Step 3: role
     role VARCHAR(32) NULL
         COMMENT 'founder_ceo | manager_team_lead | executive_associate | freelancer_consultant | other',
+    role_other VARCHAR(255) NULL
+        COMMENT 'Free-text value when role = other',
 
     -- Step 4: team size (replaces v1 usage_plan)
     team_size ENUM('just_me','2_10','10_50','50_plus') NULL,
