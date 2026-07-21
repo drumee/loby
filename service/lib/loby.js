@@ -600,9 +600,50 @@ class Account extends Entity {
    * @returns
    */
   async make_default_folers(opt) {
-    const { db_name, home_id } = opt;
-    for (let dirname of ["Photos", "Documents", "Videos"]) {
-      await this.make_dir(db_name, home_id, dirname)
+    // Seed the new account's desk with the three workspace types the desk
+    // create-workspace form offers (ui-team media/form), using the SAME
+    // area conventions so a seeded workspace behaves identically to one the
+    // user creates later:
+    //   Internal Workspace → hub, area 'private' (team/membership space)
+    //   External Workspace → hub, area 'share'   (link-shared, no public grant)
+    //   Personal Workspace → plain folder at home root (NOT a hub) — mirrors
+    //                        the form's "personal" branch, avoiding hub
+    //                        membership/sidebar semantics and private_hub quota.
+    // The account object returned by drumate_create (create_account with
+    // autosignin=0) carries everything we need: uid (owner), db_name (user_db),
+    // home_id (desk root = parent), domain_name.
+    const owner_id = opt.uid || opt.id;
+    const user_db = opt.db_name;
+    const pid = opt.home_id;
+    const { main_domain } = sysEnv();
+    const domain = opt.domain_name || main_domain;
+
+    if (!owner_id || !user_db || !pid) {
+      this.warn("[make_default_folers] Missing account context; skipping", opt);
+      return;
+    }
+
+    const hubs = [
+      { filename: "Internal Workspace", area: "private" },
+      { filename: "External Workspace", area: "share" },
+    ];
+
+    for (const { filename, area } of hubs) {
+      try {
+        const res = await this.createHub({ owner_id, domain, area, filename, pid, user_db });
+        if (!res || !res.hub_id) {
+          this.warn(`[make_default_folers] Failed to create ${area} workspace "${filename}"`, res);
+        }
+      } catch (e) {
+        this.warn(`[make_default_folers] Error creating ${area} workspace "${filename}":`, e && e.message);
+      }
+    }
+
+    // Personal Workspace is a plain private folder at the desk root, not a hub.
+    try {
+      await this.make_dir(user_db, pid, "Personal Workspace");
+    } catch (e) {
+      this.warn(`[make_default_folers] Error creating Personal Workspace folder:`, e && e.message);
     }
   }
 
