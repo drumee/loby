@@ -56,7 +56,17 @@ class Onboarding extends Entity {
     const sessionId = this.input.sid();
     const firstName = this.input.need(Attr.firstname);
     const lastName = this.input.get(Attr.lastname) || null;
-    const email = this.input.get(Attr.email) || null;
+    // Backfill the account email onto the onboarding row when the client
+    // doesn't send it (the v2 wizard posts only firstname). Onboarding runs
+    // authenticated, so this.user carries the profile. Persisting the email
+    // here is what lets analytics join a response back to its user account —
+    // without it, onboarding_responses.email stays NULL and the onboarding
+    // export's User ID / Username / Email / Joined columns come out empty.
+    let email = this.input.get(Attr.email) || null;
+    if (!email && this.uid !== ID_NOBODY) {
+      const profile = this.user.get(Attr.profile) || {};
+      email = profile.email || null;
+    }
     const countryCode = this.input.get('country_code') || null;
 
     if (!firstName) {
