@@ -55,7 +55,7 @@ class Account extends Entity {
    * Logic tham khảo adminpanel.js: join_hub + permission_grant (user db) + permission_grant (hub db).
    * @param {string} email - email user vừa đăng ký
    */
-  async _resolve_pending_invitation(email, knownUid) {
+  async _resolve_pending_invitation(email, knownUid, knownDbName) {
     // The OAuth path already holds the id of the account it just created, so it
     // passes it in. Re-deriving it from the address there is an extra failure
     // mode for no gain: drumate_exists has to see a row that was written
@@ -73,8 +73,18 @@ class Account extends Entity {
     }
     const newUser = { id: uid };
 
-    const userEntity = await this.yp.await_proc("get_entity", newUser.id);
-    const userDbName = userEntity && userEntity.db_name;
+    // The caller may already hold the account's db. That matters because this
+    // lookup is the ONLY early return that can leave the pending rows behind —
+    // the delete at the end is unconditional, so even failed grants still
+    // consume them. get_entity needs drumate JOIN entity JOIN domain on dom_id,
+    // all of which have to be in place; asking it about an account created
+    // moments ago is the one call here that can come back empty on a brand-new
+    // row and abandon the invitation with a single log line.
+    let userDbName = knownDbName || null;
+    if (!userDbName) {
+      const userEntity = await this.yp.await_proc("get_entity", newUser.id);
+      userDbName = userEntity && userEntity.db_name;
+    }
     if (!userDbName) {
       this.warn("[_resolve_pending_invitation] Cannot find db_name for user", newUser.id);
       return;
@@ -300,7 +310,10 @@ class Account extends Entity {
     // Best-effort, exactly as on the email path: a failure here must not undo
     // an account that has already been created and linked.
     try {
-      await this._resolve_pending_invitation(email, newUserId);
+      // uid and db come from the account this method just created — both are
+      // already validated above (creationResult.db_name gate) — so resolution
+      // never has to re-derive them from a row it is racing.
+      await this._resolve_pending_invitation(email, newUserId, creationResult.db_name);
     } catch (e) {
       this.warn(`[Auth] Failed to resolve pending invitations for ${email}:`, e && e.message);
     }
