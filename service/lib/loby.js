@@ -21,7 +21,10 @@ const {
 const { Entity } = require("@drumee/server-core");
 const { readFileSync } = require("fs");
 const { resolve } = require("path");
-const { template } = require("lodash");
+// isEmpty/isArray are used by _resolve_pending_invitation, which moved here
+// from signup.js — where they were imported. Moving the method without them
+// left it throwing ReferenceError at its first guard.
+const { template, isEmpty, isArray } = require("lodash");
 
 // Configured envelope sender (email.json -> auth.user), resolved once. Used to
 // build a display-name From ("Drumee" <sender>) for outbound mail, matching the
