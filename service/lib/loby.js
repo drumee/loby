@@ -43,6 +43,68 @@ class Account extends Entity {
   /**
    * The account schema is picked from the pool of hubs that are already created by offline process 
    */
+  /**
+   * Moved up from Signup so BOTH sign-up paths share it: email-and-password
+   * (signup.create_account) and OAuth (_signUpWithOAuth below). It used to live
+   * only on Signup, which is why an OAuth sign-up created the account, linked
+   * the provider and seeded the default folders but never granted the
+   * workspaces the person had been invited to.
+   *
+   * Resolve pending hub invitations từ hub.add_contributors (email được invite trước khi đăng ký).
+   * Add user vào các hub và xóa khỏi pending_invitation.
+   * Logic tham khảo adminpanel.js: join_hub + permission_grant (user db) + permission_grant (hub db).
+   * @param {string} email - email user vừa đăng ký
+   */
+  async _resolve_pending_invitation(email) {
+    let newUser = await this.yp.await_proc("drumate_exists", email);
+    if (isArray(newUser)) newUser = newUser[0];
+    if (isEmpty(newUser) || !newUser.id) {
+      this.warn("[_resolve_pending_invitation] Cannot find user for", email);
+      return;
+    }
+
+    const userEntity = await this.yp.await_proc("get_entity", newUser.id);
+    const userDbName = userEntity && userEntity.db_name;
+    if (!userDbName) {
+      this.warn("[_resolve_pending_invitation] Cannot find db_name for user", newUser.id);
+      return;
+    }
+
+    const pending = await this.yp.await_proc("pending_invitation_get_by_email", email);
+    const rows = toArray(pending);
+    if (isEmpty(rows)) {
+      this.debug("[_resolve_pending_invitation] No pending invitations for", email);
+      return;
+    }
+
+    this.debug("[_resolve_pending_invitation] Resolving", rows.length, "pending invitations for", email);
+    for (const row of rows) {
+      const { hub_id, permission, expiry_time } = row;
+      try {
+        const hubDbName = await this.yp.await_func("get_db_name", hub_id);
+        if (!hubDbName) {
+          this.warn('[_resolve_pending_invitation] Cannot find db_name for hub', hub_id);
+          continue;
+        }
+
+        await this.yp.await_proc(`${userDbName}.join_hub`, hub_id);
+        await this.yp.await_proc(
+          `${userDbName}.permission_grant`,
+          hub_id, newUser.id, expiry_time, permission, 'system', 'Resolved from pending_invitation on signup'
+        );
+        await this.yp.await_proc(
+          `${hubDbName}.permission_grant`,
+          '*', newUser.id, expiry_time, permission, 'system', 'Resolved from pending_invitation on signup'
+        );
+        this.debug("[_resolve_pending_invitation] Added user", newUser.id, "to hub", hub_id);
+      } catch (err) {
+        this.warn(`[_resolve_pending_invitation] Failed for hub ${hub_id}:`, err && err.message);
+      }
+    }
+
+    await this.yp.await_proc("pending_invitation_delete_by_email", email);
+  }
+
   async create_account(data, autosignin = 1) {
     const { main_domain: domain } = sysEnv();
     let {
@@ -214,6 +276,23 @@ class Account extends Entity {
       await this.make_default_folers(creationResult);
     } catch (e) {
       this.warn(`[Auth] Failed to create default folders for ${email}:`, e && e.message);
+    }
+
+    // Grant the workspaces this address was invited to before it had an
+    // account — the same step signup.create_account performs for the
+    // email-and-password path. Without it an OAuth sign-up lands on a desk
+    // holding only the three default workspaces, and opening the one they were
+    // invited to fails with "the file you requested does not exist".
+    //
+    // Scope-agnostic: it resolves whatever pending_invitation rows exist for
+    // the address, so internal and external are handled identically.
+    //
+    // Best-effort, exactly as on the email path: a failure here must not undo
+    // an account that has already been created and linked.
+    try {
+      await this._resolve_pending_invitation(email);
+    } catch (e) {
+      this.warn(`[Auth] Failed to resolve pending invitations for ${email}:`, e && e.message);
     }
 
     // Get full session data
