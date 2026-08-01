@@ -66,7 +66,7 @@ class Account extends Entity {
       let newUser = await this.yp.await_proc("drumate_exists", email);
       if (isArray(newUser)) newUser = newUser[0];
       if (isEmpty(newUser) || !newUser.id) {
-        this.warn("[_resolve_pending_invitation] Cannot find user for", email);
+        this.warn("[TRACE][resolve] EXIT-1 drumate_exists found no user for", email);
         return;
       }
       uid = newUser.id;
@@ -74,9 +74,12 @@ class Account extends Entity {
     const newUser = { id: uid };
 
     // The caller may already hold the account's db. That matters because this
-    // lookup is the ONLY early return that can leave the pending rows behind —
-    // the delete at the end is unconditional, so even failed grants still
-    // consume them. get_entity needs drumate JOIN entity JOIN domain on dom_id,
+    // lookup is ONE OF THREE early returns that land before the delete (the
+    // others: no user, and no pending rows), and the delete is otherwise
+    // unconditional — even failed grants consume the rows. It is the most
+    // likely of the three to fire on a fresh account, not the only candidate;
+    // TRACE below records which one actually did.
+    // get_entity needs drumate JOIN entity JOIN domain on dom_id,
     // all of which have to be in place; asking it about an account created
     // moments ago is the one call here that can come back empty on a brand-new
     // row and abandon the invitation with a single log line.
@@ -85,15 +88,17 @@ class Account extends Entity {
       const userEntity = await this.yp.await_proc("get_entity", newUser.id);
       userDbName = userEntity && userEntity.db_name;
     }
+    this.warn("[TRACE][resolve] enter email=%s uid=%s db=%s (db source: %s)",
+      email, uid, userDbName, knownDbName ? "caller" : "get_entity");
     if (!userDbName) {
-      this.warn("[_resolve_pending_invitation] Cannot find db_name for user", newUser.id);
+      this.warn("[TRACE][resolve] EXIT-2 no db_name for uid", newUser.id);
       return;
     }
 
     const pending = await this.yp.await_proc("pending_invitation_get_by_email", email);
     const rows = toArray(pending);
     if (isEmpty(rows)) {
-      this.debug("[_resolve_pending_invitation] No pending invitations for", email);
+      this.warn("[TRACE][resolve] EXIT-3 pending_invitation_get_by_email returned 0 rows for", email);
       return;
     }
 
@@ -107,7 +112,9 @@ class Account extends Entity {
           continue;
         }
 
+        this.warn("[TRACE][resolve] hub=%s userdb=%s hubdb=%s -> join_hub", hub_id, userDbName, hubDbName);
         await this.yp.await_proc(`${userDbName}.join_hub`, hub_id);
+        this.warn("[TRACE][resolve] hub=%s join_hub OK -> permission_grant(user db)", hub_id);
         await this.yp.await_proc(
           `${userDbName}.permission_grant`,
           hub_id, newUser.id, expiry_time, permission, 'system', 'Resolved from pending_invitation on signup'
@@ -116,13 +123,21 @@ class Account extends Entity {
           `${hubDbName}.permission_grant`,
           '*', newUser.id, expiry_time, permission, 'system', 'Resolved from pending_invitation on signup'
         );
-        this.debug("[_resolve_pending_invitation] Added user", newUser.id, "to hub", hub_id);
+        this.warn("[TRACE][resolve] hub=%s BOTH permission_grant OK", hub_id);
       } catch (err) {
-        this.warn(`[_resolve_pending_invitation] Failed for hub ${hub_id}:`, err && err.message);
+        this.warn(`[TRACE][resolve] hub=${hub_id} FAILED:`, err && err.message);
       }
     }
 
+    this.warn("[TRACE][resolve] calling pending_invitation_delete_by_email for", email);
     await this.yp.await_proc("pending_invitation_delete_by_email", email);
+    // Read back so the log proves the table state, not just that the call was made.
+    try {
+      const left = toArray(await this.yp.await_proc("pending_invitation_get_by_email", email));
+      this.warn("[TRACE][resolve] DONE email=%s rows_remaining=%s", email, left.length);
+    } catch (e) {
+      this.warn("[TRACE][resolve] DONE (read-back failed)", e && e.message);
+    }
   }
 
   async create_account(data, autosignin = 1) {
@@ -255,6 +270,8 @@ class Account extends Entity {
     };
 
     const creationResult = await this.create_account(createData, 0) || {};
+    this.warn("[TRACE][oauth] create_account email=%s db_name=%s home_id=%s",
+      email, creationResult.db_name, creationResult.home_id);
     if (!creationResult.home_id || !creationResult.db_name) {
       this.warn(`[Auth] Failed to create account for ${email}:`, creationResult);
       return { status: 'error', error: 'account_creation_failed' };
@@ -313,9 +330,11 @@ class Account extends Entity {
       // uid and db come from the account this method just created — both are
       // already validated above (creationResult.db_name gate) — so resolution
       // never has to re-derive them from a row it is racing.
+      this.warn("[TRACE][oauth] calling resolve for uid=%s db=%s", newUserId, creationResult.db_name);
       await this._resolve_pending_invitation(email, newUserId, creationResult.db_name);
+      this.warn("[TRACE][oauth] resolve returned for", email);
     } catch (e) {
-      this.warn(`[Auth] Failed to resolve pending invitations for ${email}:`, e && e.message);
+      this.warn("[TRACE][oauth] resolve THREW for %s:", email, e && e.message);
     }
 
     // Get full session data
@@ -327,7 +346,7 @@ class Account extends Entity {
     finalSessionData = toArray(finalSessionData)[0];
 
     if (finalSessionData && finalSessionData.status === 'ok') {
-      this.debug(`[Auth] Sign-up complete for ${email}`);
+      this.warn("[TRACE][oauth] callback returning OK for %s uid=%s", email, newUserId);
       return (finalSessionData);
     } else {
       this.warn(`[Auth] Failed to get session after sign-up:`, finalSessionData);
