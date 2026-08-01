@@ -55,13 +55,23 @@ class Account extends Entity {
    * Logic tham khảo adminpanel.js: join_hub + permission_grant (user db) + permission_grant (hub db).
    * @param {string} email - email user vừa đăng ký
    */
-  async _resolve_pending_invitation(email) {
-    let newUser = await this.yp.await_proc("drumate_exists", email);
-    if (isArray(newUser)) newUser = newUser[0];
-    if (isEmpty(newUser) || !newUser.id) {
-      this.warn("[_resolve_pending_invitation] Cannot find user for", email);
-      return;
+  async _resolve_pending_invitation(email, knownUid) {
+    // The OAuth path already holds the id of the account it just created, so it
+    // passes it in. Re-deriving it from the address there is an extra failure
+    // mode for no gain: drumate_exists has to see a row that was written
+    // moments earlier, and when it does not this returns quietly and the
+    // invitation stays unresolved with only a log line to show for it.
+    let uid = knownUid || null;
+    if (!uid) {
+      let newUser = await this.yp.await_proc("drumate_exists", email);
+      if (isArray(newUser)) newUser = newUser[0];
+      if (isEmpty(newUser) || !newUser.id) {
+        this.warn("[_resolve_pending_invitation] Cannot find user for", email);
+        return;
+      }
+      uid = newUser.id;
     }
+    const newUser = { id: uid };
 
     const userEntity = await this.yp.await_proc("get_entity", newUser.id);
     const userDbName = userEntity && userEntity.db_name;
@@ -290,7 +300,7 @@ class Account extends Entity {
     // Best-effort, exactly as on the email path: a failure here must not undo
     // an account that has already been created and linked.
     try {
-      await this._resolve_pending_invitation(email);
+      await this._resolve_pending_invitation(email, newUserId);
     } catch (e) {
       this.warn(`[Auth] Failed to resolve pending invitations for ${email}:`, e && e.message);
     }
