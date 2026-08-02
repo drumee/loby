@@ -6,6 +6,7 @@ const { resolve } = require('path');
 const { isEmpty, isArray } = require('lodash');
 const Loby = require("./lib/loby")
 const { uniqueNamesGenerator, colors, animals, adjectives } = require('unique-names-generator');
+const { randomBytes } = require('crypto');
 
 const folderNameConfig = {
   dictionaries: [colors, animals],
@@ -115,7 +116,15 @@ class Signup extends Loby {
    */
   async _send_verification_email(_uid, _email) {
     try {
-      const { token } = await this.yp.await_proc("drumate_set_verification_token", _uid, _email) || {};
+      // 256 bits from a CSPRNG. v1 minted the token in SQL as sha2(uuid(),224),
+      // but MariaDB's UUID() is version 1 -- timestamp + clock_seq + MAC -- and
+      // sha2 adds no entropy, so a single token disclosed every field except a
+      // narrow time_low (measured on prod: two consecutive tokens 164 ticks
+      // apart, everything else identical). resend_verification even let the
+      // caller choose when that timestamp happened. Must be unguessable before
+      // this link is ever allowed to establish a session.
+      const secret = randomBytes(32).toString("hex");
+      const { token } = await this.yp.await_proc("drumate_set_verification_token_v2", _uid, _email, secret) || {};
       if (!token) {
         this.warn("[_send_verification_email] no token minted for", _email);
         return 0;
@@ -276,6 +285,30 @@ class Signup extends Loby {
         return this.output.data({ status: "no_account", email });
       }
       uid = user.id;
+    }
+
+    // Only an account that is ACTUALLY awaiting verification may be re-sent.
+    // This endpoint is anonymous and takes an arbitrary address, and
+    // _send_verification_email stages unverified_email on whatever account it
+    // resolves -- while yp.login refuses any account whose unverified_email is
+    // set. Without this guard a stranger could lock ANY user out of password
+    // login with a single unauthenticated call, and (before the token was
+    // strengthened above) then predict the token that unlocks it.
+    //
+    // Keyed on the pending column, NOT registration_verified: on production
+    // 2342 of 2405 accounts are legacy rv=0 with no pending email and sign in
+    // perfectly well, so an rv-based guard would have left almost everyone
+    // exploitable. Both legitimate resend paths -- the "check your inbox"
+    // screen right after create_account, and the failed-verify screen -- have
+    // unverified_email set, so neither is affected.
+    let pending = await this.yp.await_query(
+      "SELECT unverified_email FROM drumate WHERE id=? LIMIT 1", uid
+    );
+    if (isArray(pending)) pending = pending[0];
+    if (!pending || !pending.unverified_email) {
+      // Deliberately the same neutral answer as "nothing to resend", so this
+      // cannot be used to probe which addresses have a signup in flight.
+      return this.output.data({ status: "no_pending_signup" });
     }
 
     const sent = await this._send_verification_email(uid, email);
