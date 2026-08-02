@@ -175,9 +175,26 @@ class Signup extends Loby {
     );
     if (isArray(row)) row = row[0];
     row = row || {};
-    const res = await this.yp.await_proc("drumate_verify_email_token", token) || {};
+    // v2 also binds THIS session to the account, so clicking the link in the
+    // signup mail lands the user inside the app instead of bouncing them to a
+    // second sign-in. The token check and the entity.status check both live
+    // inside the procedure, so this call cannot be used to log in as an
+    // arbitrary account, and a frozen/archived/locked account is verified but
+    // never signed in. Verification is unconditional and happens first: if the
+    // bind does not happen, signed_in comes back 0 and the client falls back to
+    // exactly today's behaviour (confirmation screen, then sign in).
+    const res = await this.yp.await_proc(
+      "drumate_verify_email_token_v2", token, this.input.sid()
+    ) || {};
     const verified = res.verified === 1 ? 1 : 0;
-    this.output.data({ verified, email: verified ? (row.email || "") : "" });
+    // Prefer the procedure's post-update address (authoritative); keep the
+    // pre-captured one as a fallback so the welcome mail can never lose its
+    // recipient.
+    this.output.data({
+      verified,
+      signed_in: verified && res.signed_in === 1 ? 1 : 0,
+      email: verified ? (res.email || row.email || "") : "",
+    });
   }
 
   /**
