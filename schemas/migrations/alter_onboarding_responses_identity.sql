@@ -34,3 +34,23 @@ ALTER TABLE `onboarding_responses`
 -- recently touched, so this must not be a UNIQUE constraint.
 ALTER TABLE `onboarding_responses`
   ADD INDEX IF NOT EXISTS `idx_uid` (`uid`);
+
+-- Repair pre-existing schema drift: `lastname` must be nullable.
+--
+-- The table definition in tables/onboarding_responses.sql has declared this
+-- column NULL since the v2 rework (it is collected at signup, not by the
+-- wizard), but instances created from the v1 definition still carry
+-- NOT NULL and alter_onboarding_responses_v2.sql never relaxed it. Found on
+-- stage, where the column is NOT NULL with no default.
+--
+-- Under STRICT_TRANS_TABLES — which is the server default here — that makes
+-- ANY insert that does not name `lastname` fail outright with
+-- "Field 'lastname' doesn't have a default value". That breaks
+-- onboarding_resolve_row's stub insert, and it equally breaks the v2 wizard's
+-- own step 1, which posts firstname only and stores NULL for lastname.
+--
+-- Widening NOT NULL -> NULL cannot lose data, and MODIFY is idempotent: on an
+-- instance that is already correct this is a no-op. It must run BEFORE the
+-- procedures, which the manifest guarantees.
+ALTER TABLE `onboarding_responses`
+  MODIFY COLUMN `lastname` VARCHAR(128) NULL;
