@@ -343,6 +343,34 @@ class Account extends Entity {
   /**
  * Handle OAuth callback for both Google and Apple
  */
+  /**
+   * Record an accepted sign-in that was opened by a PROCEDURE rather than by
+   * session.signin()/session.login().
+   *
+   * server-core logs a connection in those two methods and nowhere else, so a
+   * session opened by session_login_with_oauth or session_login_otp is invisible
+   * to everything reading services_log -- yp.show_login_log, and the analytics
+   * "Last login" column, which takes MAX(ctime) over rows carrying
+   * args.success='1'.
+   *
+   * This is not a new behaviour, it is a restored one: stage still holds
+   * google.callback and apple.callback rows, but none newer than 2025-11-18,
+   * while yp.signin rows continue to today. The logging was lost when these
+   * paths moved into this module.
+   *
+   * NEVER LET THIS BREAK A LOGIN. The provider has already authenticated the
+   * user by the time we run; a logging failure must cost an analytics row, not
+   * their session. Hence the swallow.
+   * @param {String} uid
+   */
+  async _logConnection(uid) {
+    try {
+      await this.session._log_connection({ uid });
+    } catch (e) {
+      this.warn('[Auth] failed to record login for', uid, e && e.message);
+    }
+  }
+
   async handleOAuthCallback(profile) {
     try {
 
@@ -402,6 +430,13 @@ class Account extends Entity {
            WHERE user_id = ? AND provider = ?`,
           access_token, refresh_token, sessionData.id, provider
         );
+        // A completed sign-in, and the only one on this path: the session was
+        // opened by session_login_with_oauth, which writes no services_log row.
+        // CASE C below needs no equivalent -- it signs up through
+        // create_account, which finishes on session.signin() and is logged
+        // there (stage's signup.create_account rows). CASE D is finalized in
+        // oauth.verify_otp and logged there.
+        await this._logConnection(sessionData.id);
         sessionData.method = 'signin';
         return sessionData;
       }

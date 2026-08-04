@@ -50,6 +50,14 @@ class OAuth extends Loby {
     const r = toArray(
       await this.yp.await_proc('session_login_otp', pending.uid, code, secret, sid)
     )[0];
+    // This COMPLETES the OAuth sign-in that the provider callback started. The
+    // callback returned at CASE D without logging, correctly -- the cookie was
+    // only otp_pending, nobody was signed in yet -- and session_login_otp is a
+    // plain proc that writes no services_log row. So unless we log here, an
+    // OAuth account with 2FA signs in perfectly and never registers at all.
+    if (r && r.status === 'success') {
+      await this._logConnection(pending.uid);
+    }
     this.output.data(r || { status: 'error' });
   }
 
