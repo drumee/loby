@@ -3,8 +3,10 @@
     "save_user_info": {
       "scope": "hub",
       "permission": {
-        "src": "owner"
-      }
+        "src": "anonymous",
+        "fast_check": "public-api"
+      },
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     },
     "save_signup_info": {
       "scope": "hub",
@@ -17,68 +19,90 @@
     "save_usage_plan": {
       "scope": "hub",
       "permission": {
-        "src": "owner"
-      }
+        "src": "anonymous",
+        "fast_check": "public-api"
+      },
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     },
     "save_industry": {
       "scope": "hub",
       "permission": {
-        "src": "owner"
-      }
+        "src": "anonymous",
+        "fast_check": "public-api"
+      },
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     },
     "save_role": {
       "scope": "hub",
       "permission": {
-        "src": "owner"
-      }
+        "src": "anonymous",
+        "fast_check": "public-api"
+      },
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     },
     "save_team_size": {
       "scope": "hub",
       "permission": {
-        "src": "owner"
-      }
+        "src": "anonymous",
+        "fast_check": "public-api"
+      },
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     },
     "save_intent": {
       "scope": "hub",
       "permission": {
-        "src": "owner"
-      }
+        "src": "anonymous",
+        "fast_check": "public-api"
+      },
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     },
     "save_challenges": {
       "scope": "hub",
       "permission": {
-        "src": "owner"
-      }
+        "src": "anonymous",
+        "fast_check": "public-api"
+      },
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     },
     "save_tools": {
       "scope": "hub",
       "permission": {
-        "src": "owner"
-      }
+        "src": "anonymous",
+        "fast_check": "public-api"
+      },
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     },
     "save_privacy": {
       "scope": "hub",
       "permission": {
-        "src": "owner"
-      }
+        "src": "anonymous",
+        "fast_check": "public-api"
+      },
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     },
     "get_response": {
       "scope": "hub",
       "permission": {
-        "src": "owner"
-      }
+        "src": "anonymous",
+        "fast_check": "public-api"
+      },
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     },
     "check_completion": {
       "scope": "hub",
       "permission": {
-        "src": "owner"
-      }
+        "src": "anonymous",
+        "fast_check": "public-api"
+      },
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     },
     "mark_complete": {
       "scope": "hub",
       "permission": {
-        "src": "owner"
-      }
+        "src": "anonymous",
+        "fast_check": "public-api"
+      },
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     },
     "get_countries": {
       "scope": "hub",
@@ -91,14 +115,18 @@
     "reset": {
       "scope": "hub",
       "permission": {
-        "src": "owner"
-      }
+        "src": "anonymous",
+        "fast_check": "public-api"
+      },
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     },
     "update_profile": {
       "scope": "hub",
       "permission": {
-        "src": "owner"
-      }
+        "src": "anonymous",
+        "fast_check": "public-api"
+      },
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     },
     "get_env": {
       "scope": "hub",
@@ -111,21 +139,27 @@
     "get_onboarding_invite_link": {
       "scope": "hub",
       "permission": {
-        "src": "owner"
-      }
+        "src": "anonymous",
+        "fast_check": "public-api"
+      },
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     },
     "send_onboarding_invites": {
       "scope": "hub",
       "permission": {
-        "src": "owner"
+        "src": "anonymous",
+        "fast_check": "public-api"
       },
-      "log": true
+      "log": true,
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     },
     "get_activation_status": {
       "scope": "hub",
       "permission": {
-        "src": "owner"
-      }
+        "src": "anonymous",
+        "fast_check": "public-api"
+      },
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     }
   },
   "modules": {
