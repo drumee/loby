@@ -1,33 +1,23 @@
-2026-07-20 (onboarding "Other" custom input — industry/role free text in industry_other/role_other columns; custom tool rides in the current_tools JSON array)
-  migrations/alter_onboarding_responses_other.sql
-  procedures/get_onboarding_response.sql
+2026-08-04 (onboarding reliability: uid-keyed rows so answers survive a session
+            change; any step can create the row so one failure no longer wedges
+            the flow; empty tool/challenge selections overwrite instead of
+            leaving stale data; tools "Other" free text moved into its own
+            tools_other column to match industry_other/role_other; true reset)
+  migrations/alter_onboarding_responses_identity.sql
+  migrations/backfill_tools_other.sql
+  procedures/onboarding_resolve_row.sql
+  procedures/save_onboarding_user_info.sql
   procedures/save_onboarding_industry.sql
   procedures/save_onboarding_role.sql
-  tables/onboarding_responses.sql
-
-2026-05-19
-  migrations/alter_onboarding_responses_v2.sql
-
-2026-05-07
+  procedures/save_onboarding_team_size.sql
+  procedures/save_onboarding_intent.sql
+  procedures/save_onboarding_tools.sql
+  procedures/save_onboarding_challenges.sql
+  procedures/get_onboarding_response.sql
   procedures/check_onboarding_completion.sql
   procedures/mark_onboarding_complete.sql
+  procedures/reset_onboarding_response.sql
+  tables/onboarding_responses.sql
+  NOTE: the save_*/get_*/check_*/mark_* procedures gain a `_uid` parameter in
+  position 2. Deploy the loby service in the same window.
 
-2026-05-03
-  procedures/save_onboarding_challenges.sql
-  procedures/save_onboarding_intent.sql
-  procedures/save_onboarding_team_size.sql
-  procedures/save_onboarding_tools.sql
-  procedures/save_onboarding_user_info.sql
-
-2026-04-01
-  procedures/save_onboarding_usage_plan.sql
-
-2025-11-17
-  procedures/get_countries.sql
-  procedures/get_signup_info.sql
-  procedures/get_waitlist.sql
-  procedures/save_onboarding_privacy.sql
-  procedures/save_signup_info.sql
-  tables/countries.sql
-  tables/dume-countries.sql
-  tables/signup_data.sql

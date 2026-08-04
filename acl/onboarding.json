@@ -3,8 +3,7 @@
     "save_user_info": {
       "scope": "hub",
       "permission": {
-        "src": "anonymous",
-        "fast_check": "public-api"
+        "src": "owner"
       }
     },
     "save_signup_info": {
@@ -12,83 +11,73 @@
       "permission": {
         "src": "anonymous",
         "fast_check": "public-api"
-      }
+      },
+      "doc": "Pre-auth signup step: by definition there is no user yet."
     },
     "save_usage_plan": {
       "scope": "hub",
       "permission": {
-        "src": "anonymous",
-        "fast_check": "public-api"
+        "src": "owner"
       }
     },
     "save_industry": {
       "scope": "hub",
       "permission": {
-        "src": "anonymous",
-        "fast_check": "public-api"
+        "src": "owner"
       }
     },
     "save_role": {
       "scope": "hub",
       "permission": {
-        "src": "anonymous",
-        "fast_check": "public-api"
+        "src": "owner"
       }
     },
     "save_team_size": {
       "scope": "hub",
       "permission": {
-        "src": "anonymous",
-        "fast_check": "public-api"
+        "src": "owner"
       }
     },
     "save_intent": {
       "scope": "hub",
       "permission": {
-        "src": "anonymous",
-        "fast_check": "public-api"
+        "src": "owner"
       }
     },
     "save_challenges": {
       "scope": "hub",
       "permission": {
-        "src": "anonymous",
-        "fast_check": "public-api"
+        "src": "owner"
       }
     },
     "save_tools": {
       "scope": "hub",
       "permission": {
-        "src": "anonymous",
-        "fast_check": "public-api"
+        "src": "owner"
       }
     },
     "save_privacy": {
       "scope": "hub",
       "permission": {
-        "src": "anonymous",
-        "fast_check": "public-api"
+        "src": "owner"
       }
     },
     "get_response": {
       "scope": "hub",
       "permission": {
-        "src": "anonymous",
-        "fast_check": "public-api"
+        "src": "owner"
       }
     },
     "check_completion": {
       "scope": "hub",
       "permission": {
-        "src": "anonymous",
-        "fast_check": "public-api"
+        "src": "owner"
       }
     },
     "mark_complete": {
       "scope": "hub",
       "permission": {
-        "src": "anonymous",
-        "fast_check": "public-api"
+        "src": "owner"
       }
     },
     "get_countries": {
@@ -96,20 +85,19 @@
       "permission": {
         "src": "anonymous",
         "fast_check": "public-api"
-      }
+      },
+      "doc": "Static reference list used by the signup country picker."
     },
     "reset": {
       "scope": "hub",
       "permission": {
-        "src": "anonymous",
-        "fast_check": "public-api"
+        "src": "owner"
       }
     },
     "update_profile": {
       "scope": "hub",
       "permission": {
-        "src": "anonymous",
-        "fast_check": "public-api"
+        "src": "owner"
       }
     },
     "get_env": {
@@ -117,28 +105,26 @@
       "permission": {
         "src": "anonymous",
         "fast_check": "public-api"
-      }
+      },
+      "doc": "Static client config (db_name / xlink). No user data."
     },
     "get_onboarding_invite_link": {
       "scope": "hub",
       "permission": {
-        "src": "anonymous",
-        "fast_check": "public-api"
+        "src": "owner"
       }
     },
     "send_onboarding_invites": {
       "scope": "hub",
       "permission": {
-        "src": "anonymous",
-        "fast_check": "public-api"
+        "src": "owner"
       },
       "log": true
     },
     "get_activation_status": {
       "scope": "hub",
       "permission": {
-        "src": "anonymous",
-        "fast_check": "public-api"
+        "src": "owner"
       }
     }
   },

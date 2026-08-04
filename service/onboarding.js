@@ -25,6 +25,45 @@ class Onboarding extends Entity {
   }
 
   /**
+   * The authenticated user, or null when the request is anonymous.
+   * `this.uid` is ID_NOBODY (not falsy) for anonymous callers, so a bare
+   * `if (!this.uid)` — which is what several handlers used to do — passes for
+   * anonymous traffic and then blows up on `this.user.get(...)`.
+   */
+  _uid() {
+    if (!this.uid || this.uid === ID_NOBODY) return null;
+    return this.uid;
+  }
+
+  /**
+   * Identity for a write/read of onboarding answers.
+   *
+   * Returns { sessionId, uid }. `uid` is the STABLE key: session ids rotate on
+   * re-login, token refresh and expiry, and keying survey answers on a
+   * transient value is what made the wizard lose data mid-flow. sessionId is
+   * still passed through so pre-uid rows keep resolving (see
+   * schemas/procedures/onboarding_resolve_row.sql for the resolution order).
+   *
+   * Returns null — after answering the request — when authentication is
+   * required and absent, so callers can `if (!id) return;`. Defence in depth:
+   * the ACL is the first gate (acl/onboarding.json), this is the second, and
+   * it is the one that does not depend on ACL configuration being right.
+   */
+  _identity({ required = true } = {}) {
+    const sessionId = this.input.sid();
+    const uid = this._uid();
+    if (required && !uid) {
+      this.exception.unauthorized('_authentication_required');
+      return null;
+    }
+    if (!sessionId && !uid) {
+      this.exception.user('No session or user identity on this request.');
+      return null;
+    }
+    return { sessionId, uid };
+  }
+
+  /**
    * 
    */
   async get_env() {
@@ -53,7 +92,9 @@ class Onboarding extends Entity {
    * legacy v1 wizard is still in use, but no longer required.
    */
   async save_user_info() {
-    const sessionId = this.input.sid();
+    const id = this._identity();
+    if (!id) return;
+    const { sessionId, uid } = id;
     const firstName = this.input.need(Attr.firstname);
     const lastName = this.input.get(Attr.lastname) || null;
     // Backfill the account email onto the onboarding row when the client
@@ -63,7 +104,7 @@ class Onboarding extends Entity {
     // without it, onboarding_responses.email stays NULL and the onboarding
     // export's User ID / Username / Email / Joined columns come out empty.
     let email = this.input.get(Attr.email) || null;
-    if (!email && this.uid !== ID_NOBODY) {
+    if (!email && uid) {
       const profile = this.user.get(Attr.profile) || {};
       email = profile.email || null;
     }
@@ -75,7 +116,7 @@ class Onboarding extends Entity {
 
     await this.db.await_proc(
       `${this.app_db}.save_onboarding_user_info`,
-      sessionId, firstName, lastName, email, countryCode
+      sessionId, uid, firstName, lastName, email, countryCode
     );
     this.output.data({ success: true, message: 'User info saved.', data: {} });
   }
@@ -84,12 +125,13 @@ class Onboarding extends Entity {
    * v2 Step 2: industry / kind of work.
    */
   async save_industry() {
-    const sessionId = this.input.sid();
+    const id = this._identity();
+    if (!id) return;
     const industry = this.input.need('industry');
     const industryOther = this.input.get('industry_other') || null;
     await this.db.await_proc(
       `${this.app_db}.save_onboarding_industry`,
-      sessionId, industry, industryOther
+      id.sessionId, id.uid, industry, industryOther
     );
     this.output.data({ success: true, message: 'Industry saved.', data: {} });
   }
@@ -98,12 +140,13 @@ class Onboarding extends Entity {
    * v2 Step 3: role.
    */
   async save_role() {
-    const sessionId = this.input.sid();
+    const id = this._identity();
+    if (!id) return;
     const role = this.input.need('role');
     const roleOther = this.input.get('role_other') || null;
     await this.db.await_proc(
       `${this.app_db}.save_onboarding_role`,
-      sessionId, role, roleOther
+      id.sessionId, id.uid, role, roleOther
     );
     this.output.data({ success: true, message: 'Role saved.', data: {} });
   }
@@ -112,11 +155,12 @@ class Onboarding extends Entity {
    * v2 Step 4: team size. Replaces save_usage_plan in the new wizard.
    */
   async save_team_size() {
-    const sessionId = this.input.sid();
+    const id = this._identity();
+    if (!id) return;
     const teamSize = this.input.need('team_size');
     await this.db.await_proc(
       `${this.app_db}.save_onboarding_team_size`,
-      sessionId, teamSize
+      id.sessionId, id.uid, teamSize
     );
     this.output.data({ success: true, message: 'Team size saved.', data: {} });
   }
@@ -125,11 +169,12 @@ class Onboarding extends Entity {
    * v2 Step 5: workspace intent ("What do you want to start with?"). Optional.
    */
   async save_intent() {
-    const sessionId = this.input.sid();
+    const id = this._identity();
+    if (!id) return;
     const intent = this.input.need('intent');
     await this.db.await_proc(
       `${this.app_db}.save_onboarding_intent`,
-      sessionId, intent
+      id.sessionId, id.uid, intent
     );
     this.output.data({ success: true, message: 'Intent saved.', data: {} });
   }
@@ -140,24 +185,50 @@ class Onboarding extends Entity {
    * the challenges array is required.
    */
   async save_challenges() {
-    const sessionId = this.input.sid();
-    const challenges = toArray(this.input.need('challenges'));
+    const id = this._identity();
+    if (!id) return;
+    // `get`, not `need`: an EMPTY selection is a legal answer ("none of
+    // these"), and it must be able to overwrite a previously saved list.
+    // `need` would still admit [], but defaulting here also keeps a client
+    // that omits the key entirely from erroring out.
+    const challenges = toArray(this.input.get('challenges') || []);
     const note = this.input.get('note') || null;
     // Pass array directly — Drumee db driver handles JSON serialization.
     // Do NOT JSON.stringify here (causes double-encoding at the driver layer).
     await this.db.await_proc(
       `${this.app_db}.save_onboarding_challenges`,
-      sessionId, challenges, note
+      id.sessionId, id.uid, challenges, note
     );
     this.output.data({ success: true, message: 'Challenges saved.', data: {} });
   }
 
   /**
-   * 
+   * True reset: clear the user's stored onboarding answers.
+   *
+   * The old implementation called clearAuthorization() and nothing else — it
+   * discarded the SESSION but kept the DATA. That is backwards on both counts:
+   *
+   *   - the half-filled onboarding_responses row survived, keyed to a session
+   *     id that no longer existed, so it was unreachable forever. Every reset
+   *     leaked one orphan row.
+   *   - the wizard restarted against a dead session, so the first save of the
+   *     "fresh" run wrote under a different identity than the reads.
+   *
+   * The wizard runs inside an authenticated desk session; resetting a
+   * questionnaire is not a reason to destroy the user's login. So this drops
+   * the answers and leaves the session intact. The stored procedure also
+   * collects any orphan rows the previous implementation left behind.
    */
   async reset() {
-    this.output.clearAuthorization(this.input.authorization());
-    this.output.data({});
+    const id = this._identity();
+    if (!id) return;
+    const res = toArray(
+      await this.db.await_proc(
+        `${this.app_db}.reset_onboarding_response`,
+        id.sessionId, id.uid
+      )
+    )[0] || {};
+    this.output.data({ success: true, removed: res.removed || 0, status: 'reset' });
   }
 
   /**
@@ -190,7 +261,9 @@ class Onboarding extends Entity {
    * Valid values: personal | startup | enterprise
    */
   async save_usage_plan() {
-    const sessionId = this.input.sid();
+    const id = this._identity();
+    if (!id) return;
+    const sessionId = id.sessionId;
     const usagePlan = this.input.need(Attr.args);
 
     const VALID_PLANS = ['personal', 'startup', 'enterprise'];
@@ -211,18 +284,30 @@ class Onboarding extends Entity {
    * v2 Step 5A: tools currently used by the team (multi-select).
    * Valid values: google_drive | notion | slack | dropbox |
    *               clickup | trello | jira | other
-   * FE sends: { tools: ["notion", "slack"] }
+   * FE sends: { tools: ["notion", "other"], tools_other: "Obsidian" }
+   *
+   * Two deliberate changes from v2:
+   *
+   *  - An empty array is accepted instead of rejected. It used to throw
+   *    ('tools array is required and must not be empty'), so the client
+   *    skipped the call when nothing was selected — which meant de-selecting
+   *    every tool silently left the previously saved list in the database.
+   *    An empty selection is a real answer and must overwrite.
+   *
+   *  - `tools_other` carries the "Other" free text in its own field, matching
+   *    industry_other / role_other, instead of being spliced into the array
+   *    where it was indistinguishable from a canonical key. The stored
+   *    procedure normalises either shape, so older clients keep working.
    */
   async save_tools() {
-    const sessionId = this.input.sid();
-    const tools = toArray(this.input.need('tools'));
-    if (!tools.length) {
-      return this.exception.user('tools array is required and must not be empty.');
-    }
+    const id = this._identity();
+    if (!id) return;
+    const tools = toArray(this.input.get('tools') || []);
+    const toolsOther = this.input.get('tools_other') || null;
     // Pass array directly — Drumee db driver handles JSON serialization.
     await this.db.await_proc(
       `${this.app_db}.save_onboarding_tools`,
-      sessionId, tools
+      id.sessionId, id.uid, tools, toolsOther
     );
     this.output.data({ success: true, message: 'Tools saved.', data: {} });
   }
@@ -231,7 +316,9 @@ class Onboarding extends Entity {
    * 
    */
   async save_privacy() {
-    const sessionId = this.input.sid();
+    const id = this._identity();
+    if (!id) return;
+    const sessionId = id.sessionId;
     const privacyLevel = this.input.need('privacy');
 
     const level = parseInt(privacyLevel);
@@ -251,11 +338,15 @@ class Onboarding extends Entity {
    * 
    */
   async check_completion() {
-    const sessionId = this.input.sid();
+    const id = this._identity();
+    if (!id) return;
+    const { sessionId, uid } = id;
     let completionStatusRaw;
 
     try {
-      completionStatusRaw = await this.db.await_proc(`${this.app_db}.check_onboarding_completion`, sessionId);
+      completionStatusRaw = await this.db.await_proc(
+        `${this.app_db}.check_onboarding_completion`, sessionId, uid
+      );
     } catch (spError) {
       console.error(`[ONBOARDING ERROR] Error calling check_completion SP for session ${sessionId}: ${spError.message}`);
       throw spError;
@@ -276,35 +367,75 @@ class Onboarding extends Entity {
    * 
    */
   async mark_complete() {
-    const sessionId = this.input.sid();
+    const id = this._identity();
+    if (!id) return;
+    const { sessionId, uid } = id;
 
     try {
-      await this.db.await_proc(`${this.app_db}.mark_onboarding_complete`, sessionId);
+      await this.db.await_proc(`${this.app_db}.mark_onboarding_complete`, sessionId, uid);
     } catch (spError) {
       console.error(`[ONBOARDING ERROR] Error calling mark_complete SP for session ${sessionId}: ${spError.message}`);
-      throw spError;
+      // Surface it as a client error rather than a 500: every SIGNAL this
+      // procedure raises is actionable by the user ("Step 2 is incomplete"),
+      // and the wizard now shows it and keeps them on the page instead of
+      // dropping them into a workspace with unsaved answers.
+      return this.exception.user(
+        (spError && spError.message) || 'Onboarding could not be completed.'
+      );
     }
 
     this.output.data({ success: true, message: 'Onboarding marked as complete (validated).', data: {} });
   }
 
   /**
-   * 
+   * Mirror the onboarding answers onto the drumate profile and set
+   * onboarded = 1 (which is what stops desk from re-launching the wizard).
+   *
+   * Identity is now validated BEFORE any user data is touched. The previous
+   * order destructured `this.user.get(Attr.profile)` first and only then
+   * checked for ID_NOBODY, so an anonymous request threw on the destructure
+   * (profile is undefined) instead of returning the intended "no-user" —
+   * a 500 where a clean answer was already written two lines below.
+   *
+   * The row is looked up by uid first and only falls back to email. Email is
+   * not an identity: it is nullable on this table, it is only backfilled from
+   * step 1, and "latest row with this address" can belong to a different
+   * session than the one that just completed. uid is exact.
    */
   async update_profile() {
-    const { email } = this.user.get(Attr.profile);
-    if (this.uid === ID_NOBODY) {
+    const uid = this._uid();
+    if (!uid) {
       return this.output.data({ status: "no-user" });
     }
-    const sql = `SELECT * FROM ${this.app_db}.onboarding_responses WHERE email=? ORDER BY mtime DESC LIMIT 1`;
-    const row = await this.yp.await_query(sql, email) || {};
-    const { firstname, lastname, country_code, industry, role, team_size, intent } = row;
+    const { email } = this.user.get(Attr.profile) || {};
+
+    let row = await this.yp.await_query(
+      `SELECT * FROM ${this.app_db}.onboarding_responses WHERE uid=? ORDER BY mtime DESC LIMIT 1`,
+      uid
+    );
+    if (!row && email) {
+      // Pre-migration rows carry no uid. Resolving them by email here is what
+      // keeps an in-flight onboarding (started before this deploy) completing
+      // normally instead of syncing an empty profile.
+      row = await this.yp.await_query(
+        `SELECT * FROM ${this.app_db}.onboarding_responses WHERE email=? ORDER BY mtime DESC LIMIT 1`,
+        email
+      );
+    }
+    row = row || {};
+
+    const {
+      firstname, lastname, country_code,
+      industry, industry_other, role, role_other, team_size, intent
+    } = row;
     const profile = { onboarded: 1 };
     if (firstname)    profile.firstname    = firstname;
     if (lastname)     profile.lastname     = lastname;
     if (country_code) profile.country_code = country_code;
-    if (role)         profile.role         = role;
-    if (industry)     profile.industry     = industry;
+    // Store what the user actually said, not the literal "other" marker —
+    // consistent with how the analytics export renders these columns.
+    if (role)         profile.role         = (role === 'other' && role_other) ? role_other : role;
+    if (industry)     profile.industry     = (industry === 'other' && industry_other) ? industry_other : industry;
     if (team_size)    profile.team_size    = team_size;
     if (intent)       profile.intent       = intent;
     await this.yp.await_proc('drumate_update_profile', this.uid, profile);
@@ -316,11 +447,15 @@ class Onboarding extends Entity {
    * @returns 
    */
   async get_response() {
-    const sessionId = this.input.sid();
+    const id = this._identity();
+    if (!id) return;
+    const { sessionId, uid } = id;
     let responseDataRaw;
     let { xlink } = JSON.parse(this.conf);
     try {
-      responseDataRaw = await this.db.await_proc(`${this.app_db}.get_onboarding_response`, sessionId);
+      responseDataRaw = await this.db.await_proc(
+        `${this.app_db}.get_onboarding_response`, sessionId, uid
+      );
     } catch (spError) {
       console.error(`[ONBOARDING ERROR] Error calling get_response SP for session ${sessionId}: ${spError.message}`);
       throw spError;
@@ -333,13 +468,18 @@ class Onboarding extends Entity {
       return;
     }
 
-    // Parse JSON tools
-    if (responseData.current_tools && typeof responseData.current_tools === 'string') {
-      try {
-        responseData.current_tools = JSON.parse(responseData.current_tools);
-      } catch (e) {
-        this.warn("Failed to parse current_tools JSON for session:", sessionId);
-        responseData.current_tools = [];
+    // Parse the JSON columns. `challenges` is parsed too now: this payload
+    // drives wizard resume, and an unparsed string there meant the challenge
+    // chips came back unselected on every reload.
+    for (const key of ['current_tools', 'tools', 'challenges']) {
+      const v = responseData[key];
+      if (v && typeof v === 'string') {
+        try {
+          responseData[key] = JSON.parse(v);
+        } catch (e) {
+          this.warn(`Failed to parse ${key} JSON for session:`, sessionId);
+          responseData[key] = [];
+        }
       }
     }
     this.conf = Cache.getSysConf('ob_conf');
@@ -356,8 +496,10 @@ class Onboarding extends Entity {
    * If loby's DB user lacks EXECUTE on C_reward, switch to this.yp.await_proc(...).
    */
   async get_onboarding_invite_link() {
-    if (!this.uid) {
-      return this.exception.user('User not authenticated.');
+    if (!this._uid()) {
+      // ID_NOBODY is a truthy string, so the old `!this.uid` test let
+      // anonymous callers straight through to the reward/referral lookups.
+      return this.exception.unauthorized('User not authenticated.');
     }
 
     const rewardConf = JSON.parse(Cache.getSysConf('reward_hub_conf') || '{}');
@@ -404,8 +546,10 @@ class Onboarding extends Entity {
    * If loby DB user lacks EXECUTE on C_reward, switch to this.yp.await_proc(...).
    */
   async send_onboarding_invites() {
-    if (!this.uid) {
-      return this.exception.user('User not authenticated.');
+    if (!this._uid()) {
+      // ID_NOBODY is a truthy string, so the old `!this.uid` test let
+      // anonymous callers straight through to the reward/referral lookups.
+      return this.exception.unauthorized('User not authenticated.');
     }
 
     const raw = toArray(this.input.need('emails'));
@@ -492,7 +636,7 @@ class Onboarding extends Entity {
   *   - folder_chat_started → channel table (high-frequency, not suitable for services_log)
   */
   async get_activation_status() {
-    if (!this.uid) {
+    if (!this._uid()) {
       return this.output.data({
         workspace_created: false,
         first_file_uploaded: false,

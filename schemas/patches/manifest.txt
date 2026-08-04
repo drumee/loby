@@ -1,17 +1,35 @@
-# loby onboarding "Other -> type your own" patch manifest.
+# loby onboarding reliability patch (resume / session-independence / true reset).
 #
-# Paths are relative to loby/schemas. Apply order matters: the idempotent
-# column migration MUST run before the procedures that read/write the columns.
+# Paths are relative to loby/schemas. APPLY ORDER MATTERS:
+#   1. the additive column migration, before anything reads or writes uid /
+#      tools_other;
+#   2. the legacy tools backfill, which needs tools_other to exist;
+#   3. onboarding_resolve_row, which every procedure below calls;
+#   4. the procedures themselves.
 #
 # Do NOT add tables/onboarding_responses.sql here — that file begins with
 # `DROP TABLE IF EXISTS` and would destroy live data. Existing instances are
-# migrated with the ALTER patch below; the full table def is for fresh installs
-# only.
+# migrated with the ALTER patch below; the full table def is for fresh
+# installs only.
 #
 # Prerequisite: instances must already be on the onboarding v2 baseline
-# (alter_onboarding_responses_v2.sql). On a still-v1 instance the ALTER below
-# fails cleanly (no `industry` column to anchor AFTER) and is skipped.
-migrations/alter_onboarding_responses_other.sql
+# (alter_onboarding_responses_v2.sql) and the "other" patch
+# (alter_onboarding_responses_other.sql).
+#
+# DEPLOY TOGETHER WITH the loby service: the procedure signatures below gain a
+# `_uid` parameter in position 2, and service/onboarding.js passes it. Applying
+# the SQL without the service (or vice versa) breaks every onboarding write.
+migrations/alter_onboarding_responses_identity.sql
+migrations/backfill_tools_other.sql
+procedures/onboarding_resolve_row.sql
+procedures/save_onboarding_user_info.sql
 procedures/save_onboarding_industry.sql
 procedures/save_onboarding_role.sql
+procedures/save_onboarding_team_size.sql
+procedures/save_onboarding_intent.sql
+procedures/save_onboarding_tools.sql
+procedures/save_onboarding_challenges.sql
 procedures/get_onboarding_response.sql
+procedures/check_onboarding_completion.sql
+procedures/mark_onboarding_complete.sql
+procedures/reset_onboarding_response.sql
