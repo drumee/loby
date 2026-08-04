@@ -5,6 +5,7 @@ const { toArray } = require('@drumee/server-essentials').utils;
 const { resolve } = require('path');
 const { isEmpty, isArray } = require('lodash');
 const Loby = require("./lib/loby")
+const { sendAs } = require("./lib/mail-sender");
 const { uniqueNamesGenerator, colors, animals, adjectives } = require('unique-names-generator');
 const { randomBytes } = require('crypto');
 
@@ -145,15 +146,17 @@ class Signup extends Loby {
         security_title: "Security Note",
         security_note: "This verification link will expire in 24 hours. For your security, please do not share this email with anyone.",
       };
+      const subject = "Verify your Drumee email address";
       const msg = new Messenger({
-        subject: "Verify your Drumee email address",
+        subject,
         recipient: _email,
         handler: this.exception.email,
       });
       const tpl = resolve(__dirname, "./templates/verify-email.html");
       const html = msg.renderFrom(tpl, data);
-      await msg.send({ html });
-      return 1;
+      // sendAs, not msg.send: the pinned Messenger re-wraps the From and turns
+      // a full mailbox into a "Drumee>" display name. See lib/mail-sender.
+      return await sendAs(msg, { to: _email, subject, html });
     } catch (e) {
       this.warn("[_send_verification_email] failed", e);
       return 0;
@@ -204,15 +207,15 @@ class Signup extends Loby {
     try {
       const homepath = this.input.homepath();
       const home = `${homepath}#/desk`;
+      const subject = "Your Drumee account is all set";
       const msg = new Messenger({
-        subject: "Your Drumee account is all set",
+        subject,
         recipient: _email,
         handler: this.exception.email,
       });
       const tpl = resolve(__dirname, "./templates/signup-completed.html");
       const html = msg.renderFrom(tpl, { home, email: _email });
-      await msg.send({ html });
-      return 1;
+      return await sendAs(msg, { to: _email, subject, html });
     } catch (e) {
       this.warn("[_send_signup_completed_email] failed", e);
       return 0;

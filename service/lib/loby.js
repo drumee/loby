@@ -26,20 +26,7 @@ const { resolve } = require("path");
 // left it throwing ReferenceError at its first guard.
 const { template, isEmpty, isArray } = require("lodash");
 
-// Configured envelope sender (email.json -> auth.user), resolved once. Used to
-// build a display-name From ("Drumee" <sender>) for outbound mail, matching the
-// password-login OTP path in server-team.
-let _butlerSender;
-function butlerSender() {
-  if (_butlerSender !== undefined) return _butlerSender;
-  try {
-    const f = resolve(sysEnv().credential_dir, "email.json");
-    _butlerSender = (JSON.parse(readFileSync(f, "utf8")).auth || {}).user || null;
-  } catch (e) {
-    _butlerSender = null;
-  }
-  return _butlerSender;
-}
+const { sendAs } = require("./mail-sender");
 
 class Account extends Entity {
 
@@ -513,20 +500,18 @@ class Account extends Entity {
       code: otp.code,
       why_this_otp: lex._why_this_otp,
     };
+    const subject = lex._your_otp;
     const msg = new Messenger({
-      subject: lex._your_otp,
+      subject,
       recipient: _email,
       handler: this.exception && this.exception.email,
     });
     try {
       const tpl = resolve(__dirname, "../templates/otp.html");
       const html = msg.renderFrom(tpl, data);
-      // Display-name From ("Drumee" <butler@...>) so the inbox shows "Drumee"
-      // instead of the raw sender address. Falls back to the default sender.
-      const sender = butlerSender();
-      const from = sender ? `"Drumee" <${sender}>` : undefined;
-      await msg.send(from ? { html, from } : { html });
-      return 1;
+      // sendAs, not msg.send: the pinned Messenger re-wraps the From and turns
+      // a full mailbox into a "Drumee>" display name. See ./mail-sender.
+      return await sendAs(msg, { to: _email, subject, html });
     } catch (e) {
       this.warn("[Auth] 2FA OTP email send failed", e);
       return 0;
