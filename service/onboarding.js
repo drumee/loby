@@ -108,7 +108,13 @@ class Onboarding extends Entity {
       const profile = this.user.get(Attr.profile) || {};
       email = profile.email || null;
     }
-    const countryCode = this.input.get('country_code') || null;
+    // Trim here as well as in the procedure. Neither source of this address is
+    // typed into the wizard - it comes from signup or from the stored profile -
+    // and a stray space in either made the anchored format check reject it,
+    // which blocked step 1 with no field for the user to correct.
+    const trim = (v) => (typeof v === 'string' ? v.trim() : v);
+    email = trim(email) || null;
+    const countryCode = trim(this.input.get('country_code')) || null;
 
     if (!firstName) {
       return this.exception.user("firstname is required.");
