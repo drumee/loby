@@ -1,4 +1,8 @@
 -- File: loby/schemas/procedures/save_onboarding_intent.sql
+--
+-- v3: resolves its target row via onboarding_resolve_row with _create = 1
+-- (see save_onboarding_industry.sql for the rationale). Signature gains _uid
+-- in position 2.
 
 DROP PROCEDURE IF EXISTS `save_onboarding_intent`;
 
@@ -6,12 +10,11 @@ DELIMITER $$
 
 CREATE PROCEDURE `save_onboarding_intent`(
     IN _session_id VARCHAR(128) CHARACTER SET ascii,
+    IN _uid        VARCHAR(16)  CHARACTER SET ascii,
     IN _intent     VARCHAR(32)
 )
 BEGIN
-    IF _session_id IS NULL OR _session_id = '' THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'session_id is required';
-    END IF;
+    DECLARE _rid INT UNSIGNED;
 
     IF _intent NOT IN (
         'manage_projects','work_with_clients','store_sensitive',
@@ -20,14 +23,12 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid intent value';
     END IF;
 
+    CALL onboarding_resolve_row(_session_id, _uid, 1, _rid);
+
     UPDATE onboarding_responses
     SET intent = _intent,
         mtime  = UNIX_TIMESTAMP()
-    WHERE session_id = _session_id;
-
-    IF ROW_COUNT() = 0 THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Onboarding session not found. Start at step 1.';
-    END IF;
+    WHERE id = _rid;
 END$$
 
 DELIMITER ;

@@ -1,3 +1,44 @@
+2026-08-04 (onboarding reliability: uid-keyed rows so answers survive a session
+            change; any step can create the row so one failure no longer wedges
+            the flow; empty tool/challenge selections overwrite instead of
+            leaving stale data; tools "Other" free text moved into its own
+            tools_other column to match industry_other/role_other; true reset)
+  migrations/alter_onboarding_responses_identity.sql
+  migrations/backfill_tools_other.sql
+  procedures/onboarding_resolve_row.sql
+  procedures/save_onboarding_user_info.sql
+  procedures/save_onboarding_industry.sql
+  procedures/save_onboarding_role.sql
+  procedures/save_onboarding_team_size.sql
+  procedures/save_onboarding_intent.sql
+  procedures/save_onboarding_tools.sql
+  procedures/save_onboarding_challenges.sql
+  procedures/get_onboarding_response.sql
+  procedures/check_onboarding_completion.sql
+  procedures/mark_onboarding_complete.sql
+  procedures/reset_onboarding_response.sql
+  tables/onboarding_responses.sql
+  NOTE: the save_*/get_*/check_*/mark_* procedures gain a `_uid` parameter in
+  position 2. Deploy the loby service in the same window.
+  NOTE: alter_onboarding_responses_identity.sql also REPAIRS PRE-EXISTING
+  DRIFT -- it relaxes `lastname` from NOT NULL to NULL. The table definition
+  has declared it NULL since v2 (it comes from signup, not the wizard), but
+  instances built from the v1 definition still carry NOT NULL and
+  alter_onboarding_responses_v2.sql never relaxed it. Under
+  STRICT_TRANS_TABLES that made ANY insert not naming lastname fail with
+  "Field 'lastname' doesn't have a default value" -- which broke
+  onboarding_resolve_row's stub insert AND, already before this patch, the v2
+  wizard's own step 1, which posts firstname only. Found on stage. Widening
+  cannot lose data and MODIFY is a no-op where the column is already correct.
+  APPLIED TO STAGE 2026-08-04: db 1_c1d86df0c1d86df7 (from yp.sys_conf
+  ob_conf), 155 rows preserved, tools backfill moved 2 rows into tools_other.
+  Rollback set left on that host at ~huan/onboarding-backup-20260804-231019.
+  NOTE ON ACL (acl/onboarding.json, not a schema file): these services must
+  keep `fast_check: public-api`. src:owner was tried and denied every call --
+  onboarding requests carry no hub_id, so the ACL resolves them against the
+  endpoint's hub, which a user in onboarding never owns. Authentication is
+  enforced in service/onboarding.js by _identity() instead.
+
 2026-07-20 (onboarding "Other" custom input — industry/role free text in industry_other/role_other columns; custom tool rides in the current_tools JSON array)
   migrations/alter_onboarding_responses_other.sql
   procedures/get_onboarding_response.sql
