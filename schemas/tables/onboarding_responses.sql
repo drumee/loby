@@ -7,6 +7,12 @@ CREATE TABLE IF NOT EXISTS onboarding_responses (
     session_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL
         COMMENT 'Unique session identifier',
 
+    -- Stable owner. session_id rotates (re-login / token refresh / expiry);
+    -- uid does not, so it is what onboarding_resolve_row falls back to in
+    -- order to recover a user's answers after a session change.
+    uid VARCHAR(16) CHARACTER SET ascii COLLATE ascii_general_ci NULL
+        COMMENT 'Stable owner (yp.drumate.id). Survives session rotation.',
+
     -- Step 1: name
     firstname VARCHAR(128) NOT NULL,
 
@@ -35,7 +41,8 @@ CREATE TABLE IF NOT EXISTS onboarding_responses (
         COMMENT 'manage_projects | work_with_clients | store_sensitive | build_workflows | personal_files',
 
     -- Step 6: tools + challenges (optional, "Tell me later")
-    current_tools  JSON          NULL COMMENT 'Array of tools selected by the user',
+    current_tools  JSON          NULL COMMENT 'Array of canonical tool keys selected by the user',
+    tools_other    VARCHAR(255)  NULL COMMENT 'Free-text value when current_tools contains "other"',
     challenges     JSON          NULL COMMENT 'Array of pain-point keys selected on the tools step',
     challenge_note VARCHAR(1024) NULL COMMENT 'Free-text "Tell me more" note',
 
@@ -49,6 +56,9 @@ CREATE TABLE IF NOT EXISTS onboarding_responses (
 
     INDEX idx_session_id (session_id),
     INDEX idx_email      (email),
+    -- Non-unique on purpose: a user may hold a legacy anonymous row alongside
+    -- the current one. onboarding_resolve_row picks the most recently touched.
+    INDEX idx_uid        (uid),
 
     UNIQUE KEY uni_session_id (session_id),
 
