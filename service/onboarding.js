@@ -1,7 +1,7 @@
 // service/onboarding.js
 
 const { Entity } = require('@drumee/server-core');
-const { toArray, Cache, Constants, Attr, Messenger } = require('@drumee/server-essentials');
+const { toArray, Cache, Constants, Attr, Messenger, RedisStore } = require('@drumee/server-essentials');
 const { resolve } = require('path');
 const { ID_NOBODY } = Constants;
 class Onboarding extends Entity {
@@ -445,7 +445,67 @@ class Onboarding extends Entity {
     if (team_size)    profile.team_size    = team_size;
     if (intent)       profile.intent       = intent;
     await this.yp.await_proc('drumate_update_profile', this.uid, profile);
+    // AFTER the write, never before: the dashboard re-reads the row from the
+    // database, so publishing first would race its own commit and push the old
+    // status. Not awaited — see _pushReferralLive.
+    this._pushReferralLive(this.uid);
     this.output.data(profile);
+  }
+
+  /**
+   * Tell any open analytics dashboard that this user's referral row changed.
+   *
+   * WHY IT IS HERE. Setting onboarded = 1 is the New -> Onboarding transition
+   * on the Referral users board. The board polls every two minutes, so without
+   * a push the row reads stale for up to that long; with one it turns over
+   * within a second of the user pressing the last button in the wizard.
+   *
+   * NOT AWAITED AND NEVER THROWS. Onboarding completion is the user's flow;
+   * an analytics push is a bystander. A slow Redis or a dashboard nobody has
+   * open must not add latency to update_profile, and must certainly not fail
+   * it — the caller has already committed the profile write by the time we
+   * run, so a rejection here would report failure for work that succeeded.
+   *
+   * THE ROW COMES FROM referral_members. Not from anything assembled here:
+   * that procedure owns the status CASE, and re-deriving it in a publisher is
+   * how a live badge and a polled badge start disagreeing. Asking it for the
+   * row doubles as the cohort gate — it answers nothing for a user who was
+   * never referred, and those are the majority, so the push is skipped without
+   * a second query.
+   *
+   * Recipients are resolved by referral_live_sockets (analytics-server
+   * schemas): every active socket of every user permitted to read the
+   * analytics hub. That covers each open tab, so multi-tab needs nothing
+   * extra, and it is the same access rule get_env gates on.
+   *
+   * The mirror of this method is server-team service/private/desk.js
+   * track_workspace, which reports the Onboarding -> Activated half of the
+   * same transition. Keep the payload shape identical.
+   *
+   * @param {String} uid the referred user whose row moved
+   */
+  async _pushReferralLive(uid) {
+    try {
+      if (!uid) return;
+      const rows = toArray(await this.yp.await_proc('referral_members', { uid }));
+      const model = rows && rows[0];
+      if (!model) return; // not a referred user — nothing on that board to move
+      const sockets = toArray(await this.yp.await_proc('referral_live_sockets'));
+      if (!sockets || !sockets.length) return; // no dashboard open anywhere
+      await RedisStore.sendData(
+        {
+          model,
+          // Read by the dashboard's onWsMessage. The envelope carries no
+          // top-level `service`, so router/push stamps it "live.update" and
+          // the client routes it to the `live` event; this name is what tells
+          // the widget which live message it is holding.
+          options: { service: 'live.referral_member', keys: '*' },
+        },
+        sockets
+      );
+    } catch (e) {
+      this.warn('[onboarding] referral live push failed', e && e.message);
+    }
   }
 
   /**
