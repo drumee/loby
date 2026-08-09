@@ -43,7 +43,7 @@ jobs:
           case "$TARGET" in
             TEST) EP=test;    PORT=24002; BRANCH=test;    SRC=/usr/src/drumee.test/$PLUGIN; MODE=git ;;
             UAT)  EP=preview; PORT=24001; BRANCH=preview; SRC=/usr/src/drumee/$PLUGIN;      MODE=git ;;
-            PROD) EP=main;    PORT=24000; BRANCH=preview; SRC=/usr/src/drumee/$PLUGIN;      MODE=runtime ;;
+            PROD) EP=main;    PORT=24000; BRANCH=main; SRC=/usr/src/drumee/$PLUGIN;      MODE=runtime ;;
             *) echo "Unknown target: $TARGET"; exit 1 ;;
           esac
           # loc=stage -> deploy locally on the runner host (drumee.in) `main` endpoint
