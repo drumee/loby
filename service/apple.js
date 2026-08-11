@@ -149,7 +149,6 @@ class Register extends Loby {
     let firstname = '';
     let lastname = '';
     const userParam = this.input.get('user');
-    this.debug("AAAA:151", userParam, payload, this.input.toJSON(), this.input.data())
     if (userParam) {
       try {
         const userData = JSON.parse(userParam);
@@ -180,17 +179,6 @@ class Register extends Loby {
       access_token: tokenResponse.data.access_token,
       refresh_token: tokenResponse.data.refresh_token
     };
-  }
-
-  // Handle response
-  handleAppleResponse(response) {
-    if (response.authorization) {
-      const authorization = response.authorization;
-      const user = authorization.user;
-
-      // Name might be in the id_token or user object
-      console.log("User:", user);
-    }
   }
 
   /**
@@ -232,7 +220,7 @@ class Register extends Loby {
         `&response_mode=form_post` +
         `&scope=${encodeURIComponent("name email")}` +
         `&state=${state}`;
-      this.debug("AAAA:210", redirect_uri, authUrl)
+      this.debug('[Auth] Apple OAuth URL generated with state:', this.input.sid(), state);
       this.output.data({ success: true, authUrl, state: state, status: 'prompt' });
     } catch (error) {
       this.warn('[Auth] Error initiating Apple OAuth:', error);

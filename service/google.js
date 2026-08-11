@@ -1,6 +1,6 @@
 // service/google.js
 
-const { sysEnv, Attr } = require('@drumee/server-essentials');
+const { sysEnv } = require('@drumee/server-essentials');
 const { resolve } = require('path');
 const { readFileSync: readJson } = require('jsonfile');
 
@@ -25,7 +25,6 @@ try {
 } catch (e) {
   console.error("[Auth] CRITICAL: Failed to load OAuth credentials!", e.message);
 }
-console.log("AAA:30Attr.state ", Attr.state)
 /** Prevent accidentla changes */
 Object.freeze(CREDENTIALS)
 
