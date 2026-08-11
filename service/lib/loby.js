@@ -26,7 +26,7 @@ const { resolve } = require("path");
 // left it throwing ReferenceError at its first guard.
 const { template, isEmpty, isArray } = require("lodash");
 
-const { sendAs } = require("./mail-sender");
+const { sendAs, legalFooterText } = require("./mail-sender");
 
 class Account extends Entity {
 
@@ -495,12 +495,21 @@ class Account extends Entity {
     }
     const lang = this.input.ua_language() || "en";
     const lex = Cache.lex(lang);
+    // Cache.lex() hands back the lexicon MAP, so a key it does not carry reads
+    // as undefined — echoing the key name is Cache.message(), not this. Both
+    // keys are absent from the default lexicon, so on any box whose lexicon has
+    // not been loaded these went out with the literal string "undefined" as the
+    // subject AND the headline. Guarded here rather than in the template so the
+    // HTML part and the text part cannot fall back differently.
+    const heading = lex._your_otp || "Your one-time code";
+    const why_this_otp = lex._why_this_otp ||
+      "You are receiving this code because a sign-in to your Drumee account needs to be verified.";
     const data = {
-      heading: lex._your_otp,
+      heading,
       code: otp.code,
-      why_this_otp: lex._why_this_otp,
+      why_this_otp,
     };
-    const subject = lex._your_otp;
+    const subject = heading;
     const msg = new Messenger({
       subject,
       recipient: _email,
@@ -509,9 +518,35 @@ class Account extends Entity {
     try {
       const tpl = resolve(__dirname, "../templates/otp.html");
       const html = msg.renderFrom(tpl, data);
+      // The window is read back from the row otp_create actually minted
+      // (it returns `expiry` = ctime + 600 beside the code) instead of being
+      // restated here, because the OTP procedures disagree about it:
+      // authenticate.sql and session_login_otp.sql expire at 10 minutes,
+      // check.sql at 30, misc.sql sweeps at 5. A mail naming the wrong number
+      // is worse than one naming none, so the line is dropped whenever the
+      // two fields are not both present and sane.
+      const ttl = Number(otp.expiry) - Number(otp.ctime);
+      const expiry_line = Number.isFinite(ttl) && ttl > 0
+        ? [`This code expires in ${Math.round(ttl / 60)} minutes.`, ""]
+        : [];
+      // Built from the same `data` the template gets, so the code and the copy
+      // cannot diverge between the two alternatives. otp.html carries no
+      // greeting, so none is invented here.
+      const text = [
+        heading,
+        "",
+        String(otp.code),
+        "",
+        why_this_otp,
+        "",
+        ...expiry_line,
+        "Never share this code with anyone. Drumee will never ask you for it.",
+        "",
+        legalFooterText(),
+      ].join("\n");
       // sendAs, not msg.send: the pinned Messenger re-wraps the From and turns
       // a full mailbox into a "Drumee>" display name. See ./mail-sender.
-      return await sendAs(msg, { to: _email, subject, html });
+      return await sendAs(msg, { to: _email, subject, html, text });
     } catch (e) {
       this.warn("[Auth] 2FA OTP email send failed", e);
       return 0;
