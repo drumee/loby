@@ -149,7 +149,6 @@ class Register extends Loby {
     let firstname = '';
     let lastname = '';
     const userParam = this.input.get('user');
-    this.debug("AAAA:151", userParam, payload, this.input.toJSON(), this.input.data())
     if (userParam) {
       try {
         const userData = JSON.parse(userParam);
@@ -180,17 +179,6 @@ class Register extends Loby {
       access_token: tokenResponse.data.access_token,
       refresh_token: tokenResponse.data.refresh_token
     };
-  }
-
-  // Handle response
-  handleAppleResponse(response) {
-    if (response.authorization) {
-      const authorization = response.authorization;
-      const user = authorization.user;
-
-      // Name might be in the id_token or user object
-      console.log("User:", user);
-    }
   }
 
   /**
@@ -232,7 +220,7 @@ class Register extends Loby {
         `&response_mode=form_post` +
         `&scope=${encodeURIComponent("name email")}` +
         `&state=${state}`;
-      this.debug("AAAA:210", redirect_uri, authUrl)
+      this.debug('[Auth] Apple OAuth URL generated with state:', this.input.sid(), state);
       this.output.data({ success: true, authUrl, state: state, status: 'prompt' });
     } catch (error) {
       this.warn('[Auth] Error initiating Apple OAuth:', error);
@@ -241,36 +229,52 @@ class Register extends Loby {
   }
 
   /**
-   * 
-   * @returns 
+   * Apple posts here (response_mode=form_post), so EVERY exit from this method
+   * has to put something in front of the browser — it is a top-level navigation,
+   * not an XHR. Mirrors google.callback: every failure ends at sendOauthError,
+   * which bounces back to the signin screen carrying the reason.
+   * @returns
    */
-  async callback(response) {
-    console.log("User:", response);
-    const code = this.getOAuthCode();
-    if (!code) return;
-    const profile = await this._getAppleProfile(code);
-    profile.provider = 'apple';
-    let res = await this.handleOAuthCallback(profile);
-    this.debug("AAAA:221", res)
-    // 2FA required: the session is pending, not finalized. Keep the pending
-    // session cookie (sendHtml/setAuthorization) and bounce the browser to the
-    // signin app's OTP screen, which finalizes via oauth.verify_otp.
-    if (res.status === 'otp_required') {
-      const redirect = `https://${main_domain}${endpoint_path}/#/welcome/signin?oauth_mfa=1&email=${encodeURIComponent(res.email || '')}`;
-      const tpl = resolve(__dirname, './templates/otp-challenge.html');
-      // res.session_id is the pending cookie's id (original signin session) —
-      // sendHtml binds the browser's authorization to it.
-      this.sendHtml({ ...res, redirect }, tpl);
-      return;
-    }
-    const home = `https://${res.domain}${endpoint_path}/`;
-    if (!res.error) {
+  async callback() {
+    try {
+      const code = this.getOAuthCode('apple', true);
+      if (!code) {
+        // No/invalid code — typically the user cancelled on Apple's consent
+        // screen, which comes back as error=user_cancelled_authorize.
+        return this.sendOauthError('access_denied');
+      }
+      const profile = await this._getAppleProfile(code);
+      profile.provider = 'apple';
+      let res = await this.handleOAuthCallback(profile);
+      // 2FA required: the session is pending, not finalized. Keep the pending
+      // session cookie (sendHtml/setAuthorization) and bounce the browser to the
+      // signin app's OTP screen, which finalizes via oauth.verify_otp.
+      if (res.status === 'otp_required') {
+        const redirect = `https://${main_domain}${endpoint_path}/#/welcome/signin?oauth_mfa=1&email=${encodeURIComponent(res.email || '')}`;
+        const tpl = resolve(__dirname, './templates/otp-challenge.html');
+        // res.session_id is the pending cookie's id (original signin session) —
+        // sendHtml binds the browser's authorization to it.
+        this.sendHtml({ ...res, redirect }, tpl);
+        return;
+      }
+      if (res.error) {
+        // invalid_state, oauth_not_linked, account creation failures... — these
+        // previously fell through and answered the browser with nothing at all.
+        return this.sendOauthError(res.error);
+      }
+      const home = `https://${res.domain}${endpoint_path}/`;
       const tpl = resolve(__dirname, './templates/account-created.html');
       // New OAuth account: show the welcome card (auto_redirect off) so the
       // user lands on it; the CTA continues to the desk, where the onboarding
       // gate kicks in. Existing sign-ins skip the card and go straight home.
       const is_new = res.method === 'signup';
       this.sendHtml({ ...res, home, auto_redirect: is_new ? 0 : 1 }, tpl)
+    } catch (e) {
+      // Token exchange rejected, JWKS fetch failed, unverified email, malformed
+      // id_token — the user gets the signin screen back instead of a hung
+      // request or a raw 500 page.
+      this.warn('[Auth] Apple OAuth callback failed:', e.message || e);
+      this.sendOauthError('oauth_failed');
     }
   }
 
