@@ -9,6 +9,34 @@
        the desk without showing the welcome card. -->
   <script>location.replace('<%= home %>');</script>
   <% } %>
+  <% if (typeof is_new !== 'undefined' && is_new) { %>
+  <!-- New OAuth account: report the Google Ads sign-up conversion
+       ("Lượt đăng ký"). This interstitial runs in the same browser that
+       clicked the ad, so the gclid cookie is still there and Ads can
+       attribute the signup; the app bundle (which carries the Google tag)
+       never loads on this page, hence a standalone snippet. Hostname-gated:
+       self-hosted AGPL deployments must not report into our Ads account.
+       Queue first, loader after — the conversion is queued before gtag.js
+       lands, whatever the network does. -->
+  <script>
+    (function () {
+      if (!/(^|\.)drumee\.com$/i.test(location.hostname)) return;
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = window.gtag || function () { dataLayer.push(arguments); };
+      gtag('js', new Date());
+      gtag('config', 'AW-18350168481');
+      gtag('event', 'conversion', {
+        send_to: 'AW-18350168481/TMlhCIGxq9scEKGzha5E',
+        value: 1.0,
+        currency: 'VND'
+      });
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://www.googletagmanager.com/gtag/js?id=AW-18350168481';
+      document.head.appendChild(s);
+    })();
+  </script>
+  <% } %>
   <style>
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }

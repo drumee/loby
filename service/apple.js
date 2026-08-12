@@ -268,7 +268,7 @@ class Register extends Loby {
       // user lands on it; the CTA continues to the desk, where the onboarding
       // gate kicks in. Existing sign-ins skip the card and go straight home.
       const is_new = res.method === 'signup';
-      this.sendHtml({ ...res, home, auto_redirect: is_new ? 0 : 1 }, tpl)
+      this.sendHtml({ ...res, home, auto_redirect: is_new ? 0 : 1, is_new: is_new ? 1 : 0 }, tpl)
     } catch (e) {
       // Token exchange rejected, JWKS fetch failed, unverified email, malformed
       // id_token — the user gets the signin screen back instead of a hung
