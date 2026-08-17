@@ -1,3 +1,15 @@
+2026-08-17 (invite step: the wizard's last step recorded nothing, so a response
+            could not tell "invited nobody" from "invited four people". Adds an
+            invites column holding the addresses contact/invite ACCEPTED, the
+            procedure that writes them, and the column on get_onboarding_response
+            so a resumed session reads it back. Also: save_onboarding_intent now
+            treats an empty value as "clear the goal" instead of raising Invalid
+            intent value, which is what lets "Tell me later" retract an answer)
+  migrations/alter_onboarding_responses_invites.sql
+  procedures/save_onboarding_invites.sql
+  procedures/get_onboarding_response.sql
+  procedures/save_onboarding_intent.sql
+
 2026-08-04 (onboarding reliability: uid-keyed rows so answers survive a session
             change; any step can create the row so one failure no longer wedges
             the flow; empty tool/challenge selections overwrite instead of
