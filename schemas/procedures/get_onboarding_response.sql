@@ -46,6 +46,7 @@ BEGIN
         tools_other,
         challenges,
         challenge_note,
+        invites,
         usage_plan,
         usage_plan            AS plan,
         privacy_concern_level,

@@ -209,6 +209,33 @@ class Onboarding extends Entity {
   }
 
   /**
+   * v2 Step 8: teammates invited from the wizard.
+   *
+   * The invitations themselves are sent by contact/invite, which creates the
+   * contact and mails it; this records the RESULT on the onboarding row, so a
+   * response can say how many people the user brought in. Without it the last
+   * step of the wizard left no trace at all and the funnel export stopped one
+   * column short.
+   *
+   * `get`, not `need`: an empty array is a legal answer — the user skipped the
+   * step without inviting anyone — and has to be able to overwrite. The client
+   * sends the full set it has sent so far rather than a delta, so the array is
+   * stored whole (see save_onboarding_invites.sql).
+   */
+  async save_invites() {
+    const id = this._identity();
+    if (!id) return;
+    // Pass the array directly — the Drumee db driver handles JSON
+    // serialization, and stringifying here double-encodes at the driver layer.
+    const invites = toArray(this.input.get('invites') || []);
+    await this.db.await_proc(
+      `${this.app_db}.save_onboarding_invites`,
+      id.sessionId, id.uid, invites
+    );
+    this.output.data({ success: true, message: 'Invites saved.', data: {} });
+  }
+
+  /**
    * True reset: clear the user's stored onboarding answers.
    *
    * The old implementation called clearAuthorization() and nothing else — it
@@ -537,7 +564,7 @@ class Onboarding extends Entity {
     // Parse the JSON columns. `challenges` is parsed too now: this payload
     // drives wizard resume, and an unparsed string there meant the challenge
     // chips came back unselected on every reload.
-    for (const key of ['current_tools', 'tools', 'challenges']) {
+    for (const key of ['current_tools', 'tools', 'challenges', 'invites']) {
       const v = responseData[key];
       if (v && typeof v === 'string') {
         try {
