@@ -1,11 +1,10 @@
-# loby onboarding reliability patch (resume / session-independence / true reset).
+# loby onboarding: record the invite step's answer on the response row.
 #
 # Paths are relative to loby/schemas. APPLY ORDER MATTERS:
-#   1. the additive column migration, before anything reads or writes uid /
-#      tools_other;
-#   2. the legacy tools backfill, which needs tools_other to exist;
-#   3. onboarding_resolve_row, which every procedure below calls;
-#   4. the procedures themselves.
+#   1. the additive column migration, before anything reads or writes invites;
+#   2. the procedure that writes it;
+#   3. get_onboarding_response, which now returns the column so a resumed
+#      session can read it back.
 #
 # Do NOT add tables/onboarding_responses.sql here — that file begins with
 # `DROP TABLE IF EXISTS` and would destroy live data. Existing instances are
@@ -13,23 +12,43 @@
 # installs only.
 #
 # Prerequisite: instances must already be on the onboarding v2 baseline
-# (alter_onboarding_responses_v2.sql) and the "other" patch
-# (alter_onboarding_responses_other.sql).
+# (alter_onboarding_responses_v2.sql), the "other" patch
+# (alter_onboarding_responses_other.sql) and the identity patch
+# (alter_onboarding_responses_identity.sql), whose onboarding_resolve_row
+# every procedure below calls.
 #
-# DEPLOY TOGETHER WITH the loby service: the procedure signatures below gain a
-# `_uid` parameter in position 2, and service/onboarding.js passes it. Applying
-# the SQL without the service (or vice versa) breaks every onboarding write.
-migrations/alter_onboarding_responses_identity.sql
-migrations/backfill_tools_other.sql
-procedures/onboarding_resolve_row.sql
-procedures/save_onboarding_user_info.sql
-procedures/save_onboarding_industry.sql
-procedures/save_onboarding_role.sql
-procedures/save_onboarding_team_size.sql
-procedures/save_onboarding_intent.sql
-procedures/save_onboarding_tools.sql
-procedures/save_onboarding_challenges.sql
+# DEPLOY TOGETHER WITH the loby service: save_onboarding_invites is reached
+# through onboarding.save_invites, which ships with acl/onboarding.json.
+# Applying the SQL without the service leaves the column permanently NULL;
+# deploying the service without the SQL makes every invite-step save fail.
+#
+# The onboarding-ui client tolerates the service being absent — it warns and
+# carries on rather than blocking the step — so a UI deployed ahead of this
+# patch degrades to "invites are sent but not recorded" instead of breaking.
+migrations/alter_onboarding_responses_invites.sql
+procedures/save_onboarding_invites.sql
 procedures/get_onboarding_response.sql
-procedures/check_onboarding_completion.sql
-procedures/mark_onboarding_complete.sql
-procedures/reset_onboarding_response.sql
+# Independent of the three above, and carried here because instances other than
+# stage have not had it: an empty value now CLEARS intent instead of raising
+# 'Invalid intent value', which is what lets the wizard's "Tell me later"
+# retract a goal the user had already chosen.
+procedures/save_onboarding_intent.sql
+
+# --- previous patch set: onboarding reliability -------------------------------
+# (resume / session-independence / true reset). Kept for reference; these are
+# already applied on every instance that has run the identity migration.
+#
+# migrations/alter_onboarding_responses_identity.sql
+# migrations/backfill_tools_other.sql
+# procedures/onboarding_resolve_row.sql
+# procedures/save_onboarding_user_info.sql
+# procedures/save_onboarding_industry.sql
+# procedures/save_onboarding_role.sql
+# procedures/save_onboarding_team_size.sql
+# procedures/save_onboarding_intent.sql
+# procedures/save_onboarding_tools.sql
+# procedures/save_onboarding_challenges.sql
+# procedures/get_onboarding_response.sql
+# procedures/check_onboarding_completion.sql
+# procedures/mark_onboarding_complete.sql
+# procedures/reset_onboarding_response.sql

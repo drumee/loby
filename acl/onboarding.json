@@ -64,6 +64,14 @@
       },
       "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
     },
+    "save_invites": {
+      "scope": "hub",
+      "permission": {
+        "src": "anonymous",
+        "fast_check": "public-api"
+      },
+      "doc": "Reachability only - authentication is enforced in service/onboarding.js by _identity(), which rejects anonymous callers (ID_NOBODY) with 401 and keys every row on the caller's uid. Do NOT set src:owner here: onboarding requests carry no hub_id, so the ACL resolves them against the endpoint's own hub, and a user in onboarding never owns that hub - it denies every call with PERMISSION_DENIED. (contact.invite can use src:owner only because it passes hub_id: Visitor.id, i.e. the caller's own hub.)"
+    },
     "save_tools": {
       "scope": "hub",
       "permission": {

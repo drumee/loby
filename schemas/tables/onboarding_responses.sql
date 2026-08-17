@@ -46,6 +46,15 @@ CREATE TABLE IF NOT EXISTS onboarding_responses (
     challenges     JSON          NULL COMMENT 'Array of pain-point keys selected on the tools step',
     challenge_note VARCHAR(1024) NULL COMMENT 'Free-text "Tell me more" note',
 
+    -- Step 8: teammates invited from the wizard.
+    --
+    -- What was actually SENT, not what was staged: an address only lands here
+    -- once contact/invite has accepted it, so the column answers "who did this
+    -- user bring in during onboarding" rather than "what did they type". The
+    -- invitations themselves live in contacts; this is the onboarding record of
+    -- them, which is what the funnel export and the activation checks read.
+    invites JSON NULL COMMENT 'Array of email addresses successfully invited at the invite step',
+
     -- Legacy v1 fields, retained for back-compat with the old wizard
     usage_plan            JSON             NULL COMMENT 'v1: personal | startup | enterprise',
     privacy_concern_level TINYINT UNSIGNED NULL COMMENT 'v1 only: 1..5',
