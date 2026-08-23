@@ -2,13 +2,13 @@ name: CD - deploy loby
 
 on:
   push:
-    branches: [preview, test]
+    branches: [preview, test, staging]
   workflow_dispatch:
     inputs:
       target:
         description: "Deploy target environment"
         type: choice
-        options: [TEST, UAT, PROD]
+        options: [TEST, UAT, PROD, STAGING]
         default: TEST
 
 concurrency:
@@ -37,6 +37,8 @@ jobs:
             TARGET="${{ github.event.inputs.target }}"
           elif [ "${{ github.ref_name }}" = "preview" ]; then
             TARGET="UAT"
+          elif [ "${{ github.ref_name }}" = "staging" ]; then
+            TARGET="STAGING"
           else
             TARGET="TEST"
           fi
@@ -44,8 +46,13 @@ jobs:
             TEST) EP=test;    PORT=24002; BRANCH=test;    SRC=/usr/src/drumee.test/$PLUGIN; MODE=git ;;
             UAT)  EP=preview; PORT=24001; BRANCH=preview; SRC=/usr/src/drumee/$PLUGIN;      MODE=git ;;
             PROD) EP=main;    PORT=24000; BRANCH=main; SRC=/usr/src/drumee/$PLUGIN;      MODE=runtime ;;
+            STAGING) EP=main; PORT=24000; BRANCH=staging; SRC=/usr/src/drumee/$PLUGIN;  MODE=runtime ;;
             *) echo "Unknown target: $TARGET"; exit 1 ;;
           esac
+          if [ "$TARGET" = "STAGING" ]; then
+            echo "SGP_HOST=vps-1b631265.vps.ovh.net" >> "$GITHUB_ENV"
+            echo "CONTAINER=drumee-uat" >> "$GITHUB_ENV"
+          fi
           # loc=stage -> deploy locally on the runner host (drumee.in) `main` endpoint
           # loc=container -> deploy into the prod box (sgp) docker container
           LOC=container; [ "$TARGET" = "TEST" ] && LOC=stage
