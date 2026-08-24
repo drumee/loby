@@ -399,7 +399,10 @@ class Signup extends Loby {
     // utm_campaign as flat keys. Thread them into args so super.create_account
     // persists profile.utm. Without this, email signups drop UTM attribution.
     const utm = {};
-    for (const k of ["utm_source", "utm_medium", "utm_campaign"]) {
+    // Four keys, not three: utm_content names the post or variant a link is on,
+    // which the UTM builder writes on every link and the click log records.
+    // Without it, "which post brought the signups" has no answer.
+    for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content"]) {
       const v = (this.input.get(k) || "").toString().trim().slice(0, 64);
       if (v) utm[k] = v;
     }
