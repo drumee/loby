@@ -131,7 +131,7 @@ class Account extends Entity {
     // by the analytics signup-source attribution alongside ref.
     let _utm = {};
     if (utm && typeof utm === "object") {
-      for (const k of ["utm_source", "utm_medium", "utm_campaign"]) {
+      for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content"]) {
         const v = (utm[k] || "").toString().trim().slice(0, 64);
         if (v) _utm[k] = v;
       }
