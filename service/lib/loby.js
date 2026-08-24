@@ -139,6 +139,49 @@ class Account extends Entity {
     return utm;
   }
 
+  /**
+   * Record one signup in yp.signup_track.
+   *
+   * IDEMPOTENT BY KEY, not by check: the table is PRIMARY KEY (uid) and this
+   * is INSERT IGNORE, so a retried create cannot double-count a campaign. A
+   * check-then-insert would race with itself on exactly the retry it is meant
+   * to survive.
+   *
+   * EVERY FAILURE IS SWALLOWED. The caller has a live account by the time this
+   * runs; a missing table, a missing column or a dead connection must cost a
+   * row of reporting and nothing else.
+   *
+   * @param {Object} drumate the created account (carries id)
+   * @param {Object} ctx     { profile, ref, utm, method }
+   */
+  async _trackSignup(drumate, ctx) {
+    try {
+      const uid = (drumate && (drumate.id || drumate.uid)) || "";
+      if (!uid) return;
+      const o = ctx || {};
+      const utm = o.utm || {};
+      const p = o.profile || {};
+      await this.yp.await_query(
+        "INSERT IGNORE INTO signup_track"
+        + " (uid, email, campaign, source, medium, content, ref, method, ctime)"
+        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, UNIX_TIMESTAMP())",
+        uid,
+        p.email || null,
+        utm.utm_campaign || null,
+        utm.utm_source || null,
+        utm.utm_medium || null,
+        utm.utm_content || null,
+        o.ref || null,
+        // 'local' unless a provider said otherwise — the OAuth paths pass
+        // their own, and knowing which is which is how anyone would notice
+        // OAuth attribution regressing again.
+        o.method || "local"
+      );
+    } catch (e) {
+      this.warn("[create_account] signup not tracked —", e && e.message);
+    }
+  }
+
   async create_account(data, autosignin = 1) {
     const { main_domain: domain } = sysEnv();
     let {
@@ -206,6 +249,19 @@ class Account extends Entity {
       this.warn("[create_account] failed", user)
       return { error: 1, failed, status: "internal_error" }
     }
+
+    // Record the signup as an EVENT, now that the account exists.
+    //
+    // AFTER THE FACT AND SWALLOWED. A signup that was not tracked is a
+    // reporting gap; a signup that failed because tracking threw is an outage.
+    // So this never blocks and never propagates: the account is already real
+    // by this line and nothing below depends on the write.
+    //
+    // Why an event at all, when profile.utm already holds the campaign: the
+    // profile key dies with the account, so a deleted user silently reduces
+    // last month's campaign total. See schemas/tables/signup_track.sql.
+    await this._trackSignup(drumate, { profile, ref, utm: _utm, method: data.method });
+
     if (!autosignin) {
       return drumate;
     }
@@ -271,6 +327,10 @@ class Account extends Entity {
       // counted as organic — the referral handle made the round trip and the
       // campaign did not, because only one of them had somewhere to wait.
       utm: profile.utm || undefined,
+      // Names itself for signup_track. Without it every signup reads as
+      // 'local' and the OAuth split — the one that was broken until now — is
+      // invisible again.
+      method: profile.provider || "oauth",
     };
 
     const creationResult = await this.create_account(createData, 0) || {};
