@@ -108,18 +108,34 @@ class Goggle extends Loby {
       // the redirect out to the provider and back — the server-side
       // callback has no access to the browser storage that captured it.
       const ref = (this.input.get('ref') || '').toString().trim().toLowerCase().slice(0, 64);
+      // Campaign attribution, parked for exactly the same reason as `ref` and
+      // by the same insert. Without it an OAuth signup that arrived on a
+      // campaign link is recorded as organic — not wrong, invisible.
+      const utm = this._utmFromInput();
       try {
         await this.yp.await_query(
-          'INSERT IGNORE INTO oauth_state (state, session_id, ref, ctime) VALUES (?, ?, ?, UNIX_TIMESTAMP())',
-          state, this.input.sid(), ref || null
+          'INSERT IGNORE INTO oauth_state (state, session_id, ref, utm_source, utm_medium, utm_campaign, utm_content, ctime)'
+          + ' VALUES (?, ?, ?, ?, ?, ?, ?, UNIX_TIMESTAMP())',
+          state, this.input.sid(), ref || null,
+          utm.utm_source || null, utm.utm_medium || null,
+          utm.utm_campaign || null, utm.utm_content || null
         );
       } catch (e) {
-        // DB without the optional oauth_state.ref column: keep OAuth working,
-        // just without referral attribution.
-        await this.yp.await_query(
-          'INSERT IGNORE INTO oauth_state (state, session_id, ctime) VALUES (?, ?, UNIX_TIMESTAMP())',
-          state, this.input.sid()
-        );
+        // DB without the optional utm columns: fall back to the shape that has
+        // only `ref`, then to the bare row. ATTRIBUTION IS BEST-EFFORT AND
+        // SIGNING IN IS NOT — a visitor must never be unable to sign in
+        // because a column for reporting is missing.
+        try {
+          await this.yp.await_query(
+            'INSERT IGNORE INTO oauth_state (state, session_id, ref, ctime) VALUES (?, ?, ?, UNIX_TIMESTAMP())',
+            state, this.input.sid(), ref || null
+          );
+        } catch (e2) {
+          await this.yp.await_query(
+            'INSERT IGNORE INTO oauth_state (state, session_id, ctime) VALUES (?, ?, UNIX_TIMESTAMP())',
+            state, this.input.sid()
+          );
+        }
       }
 
       const authUrl = this.googleClient.generateAuthUrl({

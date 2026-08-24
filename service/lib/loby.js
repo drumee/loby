@@ -116,6 +116,29 @@ class Account extends Entity {
     await this.yp.await_proc("pending_invitation_delete_by_email", email);
   }
 
+  /**
+   * The campaign tags on the current request, normalised.
+   *
+   * SHARED BY BOTH OAUTH PROVIDERS because both have the same problem: the
+   * visitor is bounced out to the provider and the callback runs server-side,
+   * so whatever the browser captured is unreachable by the time the account is
+   * made. Both park these on the oauth_state row beside `ref`.
+   *
+   * Same four keys and the same clamp as every other capture point in the
+   * chain (signup router, ui-team campaign.js, signup.create_account). A key
+   * added here has to be added there too, or it is stored on one path only.
+   *
+   * @returns {Object} only the tags that were actually present
+   */
+  _utmFromInput() {
+    const utm = {};
+    for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content"]) {
+      const v = (this.input.get(k) || "").toString().trim().slice(0, 64);
+      if (v) utm[k] = v;
+    }
+    return utm;
+  }
+
   async create_account(data, autosignin = 1) {
     const { main_domain: domain } = sysEnv();
     let {
@@ -127,7 +150,7 @@ class Account extends Entity {
       utm,                     // UTM campaign params (source attribution)
     } = data;
     ref = String(ref || "").trim().toLowerCase().slice(0, 64);
-    // Sanitize UTM to the three known keys — persisted as profile.utm and read
+    // Sanitize UTM to the four known keys — persisted as profile.utm and read
     // by the analytics signup-source attribution alongside ref.
     let _utm = {};
     if (utm && typeof utm === "object") {
@@ -242,7 +265,12 @@ class Account extends Entity {
       // the account onboarded=1 and the desk gate skips onboarding entirely.
       onboarded: 0,
       // Referral handle recovered from oauth_state by handleOAuthCallback.
-      ref: profile.ref || ""
+      ref: profile.ref || "",
+      // AND THE CAMPAIGN, recovered the same way. Without this an OAuth signup
+      // that arrived on a campaign link was persisted with no utm at all and
+      // counted as organic — the referral handle made the round trip and the
+      // campaign did not, because only one of them had somewhere to wait.
+      utm: profile.utm || undefined,
     };
 
     const creationResult = await this.create_account(createData, 0) || {};
@@ -369,9 +397,12 @@ class Account extends Entity {
       }
 
       // SELECT * (not an explicit column list) so this keeps working on
-      // databases that don't have the optional oauth_state.ref column yet —
-      // ref simply comes back undefined there.
-      const { validState, session_id, ref } = await this.yp.await_query(
+      // databases that don't have the optional oauth_state.ref / utm_* columns
+      // yet — those simply come back undefined there.
+      const {
+        validState, session_id, ref,
+        utm_source, utm_medium, utm_campaign, utm_content,
+      } = await this.yp.await_query(
         'SELECT 1 validState, s.* FROM oauth_state s WHERE state = ? AND ctime > UNIX_TIMESTAMP() - 600 LIMIT 1',
         state
       ) || {};
@@ -385,6 +416,16 @@ class Account extends Entity {
 
       // Delete used state
       await this.yp.await_query('DELETE FROM oauth_state WHERE state = ?', state);
+
+      // The campaign this visit arrived on, recovered from the state row the
+      // same way `ref` is. Only the tags that were actually parked — an empty
+      // object means the visit carried no campaign, which is the common case.
+      const utm = {};
+      for (const [k, v] of Object.entries({
+        utm_source, utm_medium, utm_campaign, utm_content,
+      })) {
+        if (v) utm[k] = String(v).trim().slice(0, 64);
+      }
 
       const domain_name = this.input.host();
       this.debug(`[Auth] OAuth callback: email=${email},session_id=${session_id}, provider=${provider}, provider_id=${provider_id}`);
@@ -441,9 +482,13 @@ class Account extends Entity {
 
       // CASE C: New user - sign up
       if (sessionData && sessionData.error_code === 'oauth_user_not_found') {
-        // Thread the referral handle (persisted at initiate) into the new
-        // account's profile for analytics attribution.
+        // Thread the referral handle AND the campaign (both persisted at
+        // initiate) into the new account's profile for analytics attribution.
+        // This is the only point at which an OAuth signup can be attributed:
+        // the browser storage that captured the campaign is two redirects away
+        // and unreachable from here.
         if (ref) profile.ref = ref;
+        if (Object.keys(utm).length) profile.utm = utm;
         let res = await this.addUser(profile);
         res.method = 'signup';
         return res;

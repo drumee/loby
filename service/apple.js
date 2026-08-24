@@ -200,18 +200,31 @@ class Register extends Loby {
       // the redirect out to the provider and back — the server-side
       // callback has no access to the browser storage that captured it.
       const ref = (this.input.get('ref') || '').toString().trim().toLowerCase().slice(0, 64);
+      // Campaign attribution, parked for the same reason as `ref` — see
+      // google.js, which does this identically.
+      const utm = this._utmFromInput();
       try {
         await this.yp.await_query(
-          'INSERT IGNORE INTO oauth_state (state, session_id, ref, ctime) VALUES (?, ?, ?, UNIX_TIMESTAMP())',
-          state, this.input.sid(), ref || null
+          'INSERT IGNORE INTO oauth_state (state, session_id, ref, utm_source, utm_medium, utm_campaign, utm_content, ctime)'
+          + ' VALUES (?, ?, ?, ?, ?, ?, ?, UNIX_TIMESTAMP())',
+          state, this.input.sid(), ref || null,
+          utm.utm_source || null, utm.utm_medium || null,
+          utm.utm_campaign || null, utm.utm_content || null
         );
       } catch (e) {
-        // DB without the optional oauth_state.ref column: keep OAuth working,
-        // just without referral attribution.
-        await this.yp.await_query(
-          'INSERT IGNORE INTO oauth_state (state, session_id, ctime) VALUES (?, ?, UNIX_TIMESTAMP())',
-          state, this.input.sid()
-        );
+        // Attribution is best-effort; signing in is not. Fall back to the
+        // ref-only shape, then to the bare row.
+        try {
+          await this.yp.await_query(
+            'INSERT IGNORE INTO oauth_state (state, session_id, ref, ctime) VALUES (?, ?, ?, UNIX_TIMESTAMP())',
+            state, this.input.sid(), ref || null
+          );
+        } catch (e2) {
+          await this.yp.await_query(
+            'INSERT IGNORE INTO oauth_state (state, session_id, ctime) VALUES (?, ?, UNIX_TIMESTAMP())',
+            state, this.input.sid()
+          );
+        }
       }
       const authUrl = `https://appleid.apple.com/auth/authorize?` +
         `client_id=${encodeURIComponent(service_id)}` +
