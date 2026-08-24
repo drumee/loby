@@ -472,6 +472,20 @@ class Onboarding extends Entity {
     if (team_size)    profile.team_size    = team_size;
     if (intent)       profile.intent       = intent;
     await this.yp.await_proc('drumate_update_profile', this.uid, profile);
+    // Activation funnel -> "Onboarded".
+    //
+    // HERE AND NOT IN mark_complete(). mark_complete only VALIDATES that the
+    // mandatory steps are stored — it can be reached and then followed by a
+    // failed update_profile, leaving a user who never got `onboarded = 1` and
+    // will meet the wizard again next login. The line above is the one that
+    // actually ends onboarding, so the milestone belongs after it.
+    //
+    // THIS IS THE ONLY TIMESTAMP THE STAGE WILL EVER HAVE.
+    // drumate.profile.$.onboarded is a boolean and nothing else records when
+    // the wizard was finished, which is why the funnel needs a row at all;
+    // accounts that completed before this shipped are backfilled with their
+    // signup time and flagged approx=1.
+    this._markFunnelMilestone(this.uid, 'onboarded');
     // AFTER the write, never before: the dashboard re-reads the row from the
     // database, so publishing first would race its own commit and push the old
     // status. Not awaited — see _pushReferralLive.
@@ -533,6 +547,33 @@ class Onboarding extends Entity {
     } catch (e) {
       this.warn('[onboarding] referral live push failed', e && e.message);
     }
+  }
+
+  /**
+   * Record an activation-funnel milestone for the analytics Funnel page.
+   *
+   * NOT AWAITED AND NEVER THROWS, exactly like _pushReferralLive above and for
+   * the same reason: onboarding completion is the user's flow, and an
+   * analytics row is a bystander. The profile write it follows has already
+   * committed, so a failure here must not turn a finished onboarding into an
+   * error the user sees.
+   *
+   * Idempotent at the database: yp.funnel_milestone is keyed (uid, milestone)
+   * and funnel_mark is INSERT IGNORE, so a user who reruns the wizard keeps
+   * the timestamp of the first completion.
+   *
+   * server-team has its own copy of this call (service/lib/funnel-milestone)
+   * for the folder and upload legs — this is a separate plugin and cannot
+   * share that file.
+   *
+   * @param {String} uid
+   * @param {String} milestone 'onboarded'
+   */
+  _markFunnelMilestone(uid, milestone) {
+    if (!uid) return;
+    this.yp.await_proc('funnel_mark', uid, milestone).catch((e) => {
+      this.warn('[onboarding] funnel mark failed', milestone, e && e.message);
+    });
   }
 
   /**
