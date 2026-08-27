@@ -140,6 +140,100 @@ class Account extends Entity {
   }
 
   /**
+   * The destination this visit named, as a flat request param.
+   *
+   * Read at initiate and parked on oauth_state beside `ref` and utm_*, for the
+   * same reason those are: the callback runs server-side, the visitor is
+   * bounced out to the provider in between, and browser storage is unreachable
+   * from there. A URL fragment is worse off still — it is never sent to a
+   * server at all.
+   *
+   * @returns {String|null} a validated fragment, or null
+   */
+  _destFromInput() {
+    return this._sanitiseDest(this.input.get("dest"));
+  }
+
+  /**
+   * Validate a destination, or refuse it.
+   *
+   * A SHAPE CHECK THAT REBUILDS, not an escaping pass. Every part is parsed,
+   * matched against an allowlist, and the string is assembled again from what
+   * survived — so a value can only ever be one this function could have
+   * written. Escaping alone would let an unrecognised-but-quoted destination
+   * through, and "somewhere the campaign never named" is the failure that
+   * matters here, not "a broken quote".
+   *
+   * WHY IT MATTERS MORE THAN IT LOOKS. The result ends up interpolated into
+   * the landing page's location.replace(), and lib/loby.js renders those
+   * templates with LODASH — whose <%= %> is the RAW delimiter, the reverse of
+   * EJS. An unvalidated apostrophe would therefore break out of that JS string
+   * literal into script context, on the page that runs immediately after
+   * authentication. The template is being escaped too (both are cheap); this
+   * is the guard that does not depend on remembering which delimiter is which.
+   *
+   * RUN AT BOTH ENDS — on the way into oauth_state and on the way back out of
+   * it. The row is data, and the code that builds the template's input is the
+   * code that has to have checked it.
+   *
+   * @param {*} raw
+   * @returns {String|null} "/desk/billing?…" or null
+   */
+  _sanitiseDest(raw) {
+    const s = (raw == null ? "" : String(raw)).trim();
+    // Length first, and REFUSED rather than truncated: half a destination is a
+    // wrong one, and the column is 255.
+    if (!s || s.length > 255) return null;
+    // No character that could leave the fragment, the attribute or the string
+    // literal it will sit in. Checked before parsing so nothing exotic reaches
+    // URLSearchParams.
+    if (/[\s"'`<>\\]/.test(s)) return null;
+
+    const q = s.indexOf("?");
+    const path = q === -1 ? s : s.slice(0, q);
+    // ONE path. Widening this list is the only way this function should ever
+    // learn a new destination — never by relaxing the parse.
+    if (path !== "/desk/billing") return null;
+    if (q === -1) return path;
+
+    const ALLOWED = {
+      plan: /^(free|pro|team|business)$/,
+      cycle: /^(monthly|yearly)$/,
+      tab: /^checkout$/,
+      // The shape yp.mkt_coupon.code stores (ascii, and the dashboard's own
+      // field). Not a lookup: whether the code exists is the checkout's
+      // question, and answering it here would refuse a valid link because a
+      // coupon was created a minute later.
+      promo: /^[A-Za-z0-9_-]{1,64}$/,
+    };
+    let usp;
+    try {
+      usp = new URLSearchParams(s.slice(q + 1));
+    } catch (e) {
+      return null;
+    }
+    // Rebuilt in a FIXED order from a fixed key list, so two links that mean
+    // the same thing produce the same string and an unknown key cannot ride
+    // along by being ignored.
+    const out = [];
+    for (const k of ["plan", "cycle", "tab", "promo"]) {
+      const v = usp.get(k);
+      if (v == null || v === "") continue;
+      if (!ALLOWED[k].test(v)) return null;
+      out.push(`${k}=${v}`);
+    }
+    // An unknown param is a refusal, not something to drop: it means this link
+    // was written against a contract this code does not have, and guessing
+    // which half of it to honour is how a destination becomes a wrong one.
+    for (const k of usp.keys()) {
+      if (!Object.prototype.hasOwnProperty.call(ALLOWED, k)) return null;
+    }
+    if (!out.length) return path;
+    const rebuilt = `${path}?${out.join("&")}`;
+    return rebuilt.length > 255 ? null : rebuilt;
+  }
+
+  /**
    * Record one signup in yp.signup_track.
    *
    * IDEMPOTENT BY KEY, not by check: the table is PRIMARY KEY (uid) and this
@@ -462,7 +556,7 @@ class Account extends Entity {
       // databases that don't have the optional oauth_state.ref / utm_* columns
       // yet — those simply come back undefined there.
       const {
-        validState, session_id, ref,
+        validState, session_id, ref, dest,
         utm_source, utm_medium, utm_campaign, utm_content,
       } = await this.yp.await_query(
         'SELECT 1 validState, s.* FROM oauth_state s WHERE state = ? AND ctime > UNIX_TIMESTAMP() - 600 LIMIT 1',
@@ -528,6 +622,11 @@ class Account extends Entity {
         // oauth.verify_otp and logged there.
         await this._logConnection(sessionData.id);
         sessionData.method = 'signin';
+        // Where this visit was heading, recovered from the state row and
+        // re-validated on the way out — the callers append it to the landing
+        // URL. Carried on all three successful exits (signin, signup, 2FA), or
+        // it would work for some users and silently not for others.
+        sessionData.dest = this._sanitiseDest(dest);
         return sessionData;
       }
 
@@ -553,6 +652,7 @@ class Account extends Entity {
         if (Object.keys(utm).length) profile.utm = utm;
         let res = await this.addUser(profile);
         res.method = 'signup';
+        res.dest = this._sanitiseDest(dest);
         return res;
       }
 
@@ -572,7 +672,12 @@ class Account extends Entity {
           // redirect must bind the browser to THIS session so the SPA's later
           // oauth.verify_otp call resolves the right pending cookie.
           session_id,
-          provider
+          provider,
+          // Carried through the OTP screen: a 2FA account that arrived on a
+          // campaign link must land where the link named, like everyone else.
+          // The signin app hands it back on the redirect it builds after
+          // oauth.verify_otp finalises the session.
+          dest: this._sanitiseDest(dest),
         };
       }
 
