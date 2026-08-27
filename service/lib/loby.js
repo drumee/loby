@@ -205,6 +205,17 @@ class Account extends Entity {
       // question, and answering it here would refuse a valid link because a
       // coupon was created a minute later.
       promo: /^[A-Za-z0-9_-]{1,64}$/,
+      // The marker naming who the campaign CTA was written for
+      // (analytics-server _recipientTag): 8 hex. It MUST be here — an unknown
+      // param is refused outright, so a destination carrying `for` would be
+      // rejected whole and the OAuth deep link would stop working entirely
+      // rather than merely losing its marker.
+      //
+      // Case-insensitive, and lowercased on the way out below. The server only
+      // ever emits lowercase and the dashboard compares case-insensitively, so
+      // refusing an uppercased tag would kill an entire destination over
+      // something neither end cares about.
+      for: /^[0-9a-fA-F]{8}$/,
     };
     let usp;
     try {
@@ -216,11 +227,12 @@ class Account extends Entity {
     // the same thing produce the same string and an unknown key cannot ride
     // along by being ignored.
     const out = [];
-    for (const k of ["plan", "cycle", "tab", "promo"]) {
+    for (const k of ["plan", "cycle", "tab", "promo", "for"]) {
       const v = usp.get(k);
       if (v == null || v === "") continue;
       if (!ALLOWED[k].test(v)) return null;
-      out.push(`${k}=${v}`);
+      // Normalised so the two ends compare equal whatever case arrived.
+      out.push(`${k}=${k === "for" ? v.toLowerCase() : v}`);
     }
     // An unknown param is a refusal, not something to drop: it means this link
     // was written against a contract this code does not have, and guessing

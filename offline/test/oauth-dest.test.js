@@ -148,6 +148,47 @@ test("every accepted param is bounded and quote-free by its own regex", () => {
     + "stopped being belt-and-braces and needs its own case");
 });
 
+// ── the recipient marker must be allowed through ───────────────────────
+// The CTA carries `for=<tag>` naming who the mail was written for. An unknown
+// param is REFUSED outright by design, so forgetting this one here does not
+// merely lose the marker — it rejects the whole destination and the OAuth deep
+// link stops working entirely. That asymmetry is why it gets its own cases.
+test("an addressed destination survives intact", () => {
+  const d = "/desk/billing?plan=team&cycle=monthly&tab=checkout"
+    + "&promo=EMAILMKT270826_2&for=cd8f5912";
+  assert.strictEqual(sanitise(d), d,
+    "the addressed campaign destination is refused — the whole OAuth deep link dies");
+});
+
+test("the tag is case-tolerant and normalised", () => {
+  // The server only ever emits lowercase and the dashboard compares
+  // case-insensitively, so refusing an uppercased tag would kill an entire
+  // destination over something neither end cares about.
+  assert.strictEqual(sanitise("/desk/billing?for=CD8F5912"),
+    "/desk/billing?for=cd8f5912");
+});
+
+test("a malformed tag is refused", () => {
+  for (const bad of ["zzzzzzzz", "cd8f591", "cd8f59123", "cd8f5912x"]) {
+    assert.strictEqual(sanitise(`/desk/billing?for=${bad}`), null, `accepted "${bad}"`);
+  }
+});
+
+test("an EMPTY tag reads as absent, not as malformed", () => {
+  // `for=` with no value is dropped like any other empty param, leaving an
+  // unaddressed destination rather than a refusal. Consistent with plan=, tab=
+  // and the rest, and it costs nothing: stripping the value is no easier than
+  // stripping the whole param, and the marker is a UX guard rather than a
+  // control either way.
+  assert.strictEqual(sanitise("/desk/billing?plan=team&for="),
+    "/desk/billing?plan=team");
+});
+
+test("an unaddressed destination is still valid", () => {
+  // Links written before the marker existed carry none.
+  assert.strictEqual(sanitise("/desk/billing?plan=team"), "/desk/billing?plan=team");
+});
+
 // ── the ladder that keeps sign-in working ──────────────────────────────
 test("initiate degrades one column-group at a time", () => {
   // A database without `dest` must still keep the campaign, and one without
