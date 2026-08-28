@@ -112,29 +112,48 @@ class Goggle extends Loby {
       // by the same insert. Without it an OAuth signup that arrived on a
       // campaign link is recorded as organic — not wrong, invisible.
       const utm = this._utmFromInput();
+      // Where the visitor was heading, parked for the third time and the same
+      // reason as `ref` and `utm` above — see _sanitiseDest. Validated HERE, on
+      // the way in, as well as on the way back out at callback.
+      const dest = this._destFromInput();
       try {
         await this.yp.await_query(
-          'INSERT IGNORE INTO oauth_state (state, session_id, ref, utm_source, utm_medium, utm_campaign, utm_content, ctime)'
-          + ' VALUES (?, ?, ?, ?, ?, ?, ?, UNIX_TIMESTAMP())',
+          'INSERT IGNORE INTO oauth_state (state, session_id, ref, utm_source, utm_medium, utm_campaign, utm_content, dest, ctime)'
+          + ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, UNIX_TIMESTAMP())',
           state, this.input.sid(), ref || null,
           utm.utm_source || null, utm.utm_medium || null,
-          utm.utm_campaign || null, utm.utm_content || null
+          utm.utm_campaign || null, utm.utm_content || null,
+          dest || null
         );
       } catch (e) {
-        // DB without the optional utm columns: fall back to the shape that has
-        // only `ref`, then to the bare row. ATTRIBUTION IS BEST-EFFORT AND
-        // SIGNING IN IS NOT — a visitor must never be unable to sign in
-        // because a column for reporting is missing.
+        // One tier per column-group, newest first: a database that has utm_*
+        // but not `dest` still keeps the campaign. Falling straight to the bare
+        // row would throw away attribution that the instance can perfectly well
+        // store, for the sake of a column it cannot.
         try {
           await this.yp.await_query(
-            'INSERT IGNORE INTO oauth_state (state, session_id, ref, ctime) VALUES (?, ?, ?, UNIX_TIMESTAMP())',
-            state, this.input.sid(), ref || null
+            'INSERT IGNORE INTO oauth_state (state, session_id, ref, utm_source, utm_medium, utm_campaign, utm_content, ctime)'
+            + ' VALUES (?, ?, ?, ?, ?, ?, ?, UNIX_TIMESTAMP())',
+            state, this.input.sid(), ref || null,
+            utm.utm_source || null, utm.utm_medium || null,
+            utm.utm_campaign || null, utm.utm_content || null
           );
-        } catch (e2) {
-          await this.yp.await_query(
-            'INSERT IGNORE INTO oauth_state (state, session_id, ctime) VALUES (?, ?, UNIX_TIMESTAMP())',
-            state, this.input.sid()
-          );
+        } catch (eUtm) {
+          // DB without the optional utm columns: fall back to the shape that
+          // has only `ref`, then to the bare row. ATTRIBUTION IS BEST-EFFORT
+          // AND SIGNING IN IS NOT — a visitor must never be unable to sign in
+          // because a column for reporting is missing.
+          try {
+            await this.yp.await_query(
+              'INSERT IGNORE INTO oauth_state (state, session_id, ref, ctime) VALUES (?, ?, ?, UNIX_TIMESTAMP())',
+              state, this.input.sid(), ref || null
+            );
+          } catch (e2) {
+            await this.yp.await_query(
+              'INSERT IGNORE INTO oauth_state (state, session_id, ctime) VALUES (?, ?, UNIX_TIMESTAMP())',
+              state, this.input.sid()
+            );
+          }
         }
       }
 
@@ -174,7 +193,11 @@ class Goggle extends Loby {
       // session cookie (sendHtml/setAuthorization) and bounce the browser to the
       // signin app's OTP screen, which finalizes via oauth.verify_otp.
       if (res.status === 'otp_required') {
-        const redirect = `https://${main_domain}${endpoint_path}/#/welcome/signin?oauth_mfa=1&email=${encodeURIComponent(res.email || '')}`;
+        // `dest` rides through the OTP screen so a 2FA account arrives where the
+        // link named. Appended as an ordinary param on a hash that already has
+        // a query; the signin app hands it back once verify_otp finalises.
+        const destParam = res.dest ? `&dest=${encodeURIComponent(res.dest)}` : '';
+        const redirect = `https://${main_domain}${endpoint_path}/#/welcome/signin?oauth_mfa=1&email=${encodeURIComponent(res.email || '')}${destParam}`;
         const tpl = resolve(__dirname, './templates/otp-challenge.html');
         // res.session_id is the pending cookie's id (original signin session) —
         // sendHtml binds the browser's authorization to it.
@@ -186,7 +209,19 @@ class Goggle extends Loby {
         // previously this fell through without ever answering the browser.
         return this.sendOauthError(res.error);
       }
-      const home = `https://${res.domain}${endpoint_path}/`;
+      // THE DESTINATION GOES ON THE URL, not into storage. The visitor may land
+      // on a different deploy slot from the one they clicked on, and a fragment
+      // could never have reached this server in the first place — so the
+      // landing URL is the only carrier that works from here. ui-team's
+      // billing-deep-link consume() already reads a destination off the URL
+      // when storage has none, which is why nothing has to change over there.
+      //
+      // Re-validated at the point of use (handleOAuthCallback already ran it):
+      // this string is about to be interpolated into the landing page's
+      // location.replace(), and the code that builds a template's input is the
+      // code that has to have checked it.
+      const dest = this._sanitiseDest(res.dest);
+      const home = `https://${res.domain}${endpoint_path}/${dest ? `#${dest}` : ''}`;
       const tpl = resolve(__dirname, './templates/account-created.html');
       // New OAuth account: show the welcome card (auto_redirect off) so the
       // user lands on it; the CTA continues to the desk, where the onboarding
