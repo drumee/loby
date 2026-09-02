@@ -7,7 +7,12 @@ const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
 const axios = require('axios');
 const Loby = require('./lib/loby');
+const { verifyAppleIdentityToken, NONCE_SHAPE } = require('./lib/apple-token');
+const { mintHandoffCode } = require('./lib/oauth-mobile');
 const { credential_dir, svc_location, endpoint_path, main_domain } = sysEnv();
+
+// A native nonce waits in oauth_state for the app to come back with a token.
+const NATIVE_NONCE_TTL = 600;
 
 let APPLECREDS = {}
 // Apple credentials with dynamic callback URI aCreds
@@ -22,6 +27,12 @@ try {
       service_id: aCreds.service_id,
       key_id: aCreds.key_id,
       private_key,
+      // The ONE app bundle id this deployment accepts native identity tokens
+      // for (stage → com.drumee.app.stage, …). Never a list across
+      // environments: a token minted for another deployment's app must not be
+      // redeemable here. Optional — without it the native services answer
+      // credentials_missing and the web flow is unaffected.
+      bundle_id: typeof aCreds.bundle_id === 'string' ? aCreds.bundle_id.trim() : '',
     };
     console.log("[Auth] Apple Credentials loaded");
   } else {
@@ -85,29 +96,195 @@ class Register extends Loby {
 
 
   /**
-   * Verify Apple ID Token with JWKS
+   * Verify an Apple ID token against a specific audience.
+   *
+   * The web flow (authorization-code exchange) audiences the token to the
+   * Services ID; a NATIVE token is audienced to the app bundle id. Same
+   * signature check, different `aud` — so the audience is a parameter and the
+   * two callers pass their own. JWKS fetch is raced against a 10 s timeout so
+   * an Apple egress stall fails fast into the callers' error path.
+   *
+   * @param {string} id_token
+   * @param {string} audience
+   * @returns {Promise<Object>} the verified payload
    */
-  async _verifyAppleIdToken(id_token) {
-    const decodedToken = jwt.decode(id_token, { complete: true });
-    if (!decodedToken) {
-      throw new Error("Invalid Apple ID Token format.");
-    }
-
-    const kid = decodedToken.header.kid;
-    const key = await this.appleJwksClient.getSigningKey(kid);
-    const signingKey = key.getPublicKey();
-
-    const payload = jwt.verify(id_token, signingKey, {
-      algorithms: ['RS256'],
-      audience: APPLECREDS.service_id,
-      issuer: 'https://appleid.apple.com'
+  async _verifyAppleIdToken(id_token, audience = APPLECREDS.service_id) {
+    const { payload } = await verifyAppleIdentityToken(id_token, {
+      getSigningKey: (kid) => this._getSigningKey(kid),
+      audience,
     });
+    return payload;
+  }
 
-    if (!payload.email_verified) {
-      throw new Error("Apple email not verified");
+  /**
+   * Resolve Apple's signing key, failing fast when Apple's JWKS endpoint
+   * stalls: jwks-rsa has no request timeout of its own, and a hung fetch
+   * would otherwise hold the callback until nginx cuts it at 60 s.
+   * @param {string} kid
+   */
+  _getSigningKey(kid) {
+    let timer;
+    return Promise.race([
+      this.appleJwksClient.getSigningKey(kid),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Apple JWKS timeout")), 10000);
+      }),
+    ]).finally(() => clearTimeout(timer));
+  }
+
+  /**
+   * Mint the nonce a native Sign in with Apple request must carry.
+   *
+   * Parked in oauth_state under an `n_` prefix and bound to the caller's
+   * session: the token Apple later returns embeds the SHA-256 of this value,
+   * so a token minted for one app session cannot be replayed into another
+   * (the mobile analogue of the browser flow's `state`). Single use.
+   */
+  async native_nonce() {
+    if (!APPLECREDS.bundle_id) {
+      return this.output.data({ status: 'error', error: 'credentials_missing' });
+    }
+    const sid = this.input.sid();
+    if (!sid) {
+      return this.output.data({ status: 'error', error: 'unexpected_error' });
+    }
+    const nonce = mintHandoffCode();
+    // A plain INSERT (not the initiate tiers' INSERT IGNORE): a 128-bit random
+    // nonce never collides, and this row is not one of the attribution tiers
+    // offline/test/oauth-dest.test.js counts. The result is checked because
+    // await_query resolves (not rejects) on a SQL failure — a nonce the app
+    // holds but the table does not would make every sign-in fail as
+    // invalid_nonce with nothing pointing at the cause. No sweep here: this is
+    // an anonymous endpoint; expired rows are swept once the token verifies.
+    const ins = await this.yp.await_query(
+      'INSERT INTO oauth_state (state, session_id, ctime) VALUES (?, ?, UNIX_TIMESTAMP())',
+      `n_${nonce}`, sid
+    );
+    if (!ins || ins.affectedRows !== 1) {
+      this.warn('[Auth] Native Apple nonce not stored');
+      return this.output.data({ status: 'error', error: 'unexpected_error' });
+    }
+    this.output.data({ status: 'ok', nonce });
+  }
+
+  /**
+   * Spend the nonce row `nonce` minted for `sid`: it must exist, be younger
+   * than NATIVE_NONCE_TTL and belong to this session, and exactly one caller
+   * may delete it.
+   * @param {string} nonce
+   * @param {string} sid
+   * @returns {Promise<boolean>}
+   */
+  async _consumeNonce(nonce, sid) {
+    const row = await this.yp.await_query(
+      "SELECT state FROM oauth_state WHERE state = ? AND session_id = ? AND ctime > UNIX_TIMESTAMP() - ? LIMIT 1",
+      `n_${nonce}`, sid, NATIVE_NONCE_TTL
+    ) || {};
+    if (!row.state) return false;
+    const del = await this.yp.await_query(
+      "DELETE FROM oauth_state WHERE state = ? AND session_id = ?", `n_${nonce}`, sid
+    );
+    return Boolean(del && del.affectedRows === 1);
+  }
+
+  /**
+   * The address an Apple identity signed up with, for the rare token that
+   * omits `email` on a repeat sign-in.
+   * @param {string} sub
+   * @returns {Promise<string|null>}
+   */
+  async _emailForSub(sub) {
+    const row = await this.yp.await_query(
+      "SELECT email FROM oauth_accounts WHERE provider = 'apple' AND provider_user_id = ? ORDER BY mtime DESC LIMIT 1",
+      sub
+    ) || {};
+    return row.email ? String(row.email) : null;
+  }
+
+  /**
+   * Sign a native Sign in with Apple result into the calling session.
+   *
+   * iOS hands the app an identity token audienced to the APP BUNDLE ID (not
+   * the Services ID the web flow uses) and, on the first authorization only,
+   * the user's name. This verifies that token against the one bundle id this
+   * deployment serves, spends the nonce bound to the caller's session, and
+   * joins the same completion path as the web callback and the mobile claim.
+   * JSON only: {status:'ok', method} | {status:'otp_required', email} |
+   * {status:'error', error}.
+   */
+  async native_signin() {
+    const sid = this.input.sid();
+    const identityToken = String(this.input.get('identity_token') || '');
+    const nonce = String(this.input.get('nonce') || '');
+    const firstname = String(this.input.get('firstname') || '').trim().slice(0, 64);
+    const lastname = String(this.input.get('lastname') || '').trim().slice(0, 64);
+
+    if (!APPLECREDS.bundle_id) {
+      return this.output.data({ status: 'error', error: 'credentials_missing' });
+    }
+    if (!sid || !NONCE_SHAPE.test(nonce)) {
+      return this.output.data({ status: 'error', error: 'invalid_nonce' });
     }
 
-    return payload;
+    let verified;
+    try {
+      verified = await verifyAppleIdentityToken(identityToken, {
+        getSigningKey: (kid) => this._getSigningKey(kid),
+        audience: APPLECREDS.bundle_id,
+        nonce,
+      });
+    } catch (e) {
+      // e.code names the rejection. key_unavailable is Apple's key set being
+      // unreachable, not a bad credential: it is logged with its cause and
+      // answered as a transient failure so the app can say "try again".
+      if (e && e.code === 'key_unavailable') {
+        this.warn('[Auth] Apple signing key unavailable:', e.message);
+        return this.output.data({ status: 'error', error: 'unexpected_error' });
+      }
+      const code = e && ['invalid_token', 'invalid_nonce', 'email_unverified'].includes(e.code)
+        ? e.code : 'invalid_token';
+      this.warn('[Auth] Native Apple token rejected:', code);
+      return this.output.data({ status: 'error', error: code });
+    }
+
+    // Expired nonces and hand-offs are swept here, behind a verified Apple
+    // token, rather than on the anonymous mint path.
+    await this.sweepOauthTables();
+
+    // The nonce row is spent only after the token verified: a garbage token
+    // must not be able to burn a nonce the real request still needs.
+    if (!(await this._consumeNonce(nonce, sid))) {
+      return this.output.data({ status: 'error', error: 'invalid_nonce' });
+    }
+
+    const email = verified.email || await this._emailForSub(verified.sub);
+    if (!email) {
+      return this.output.data({ status: 'error', error: 'invalid_token' });
+    }
+
+    let res;
+    try {
+      res = await this.completeOAuthSignin({
+        provider: 'apple',
+        provider_id: verified.sub,
+        email,
+        is_private_email: verified.is_private_email,
+        firstname,
+        lastname,
+        access_token: null,
+        refresh_token: null,
+      }, { session_id: sid, ref: '', utm: {}, dest: null });
+    } catch (e) {
+      this.warn('[Auth] Native Apple completion failed:', e && e.message);
+      return this.output.data({ status: 'error', error: 'unexpected_error' });
+    }
+    if (res && res.status === 'ok') {
+      return this.output.data({ status: 'ok', method: res.method || 'signin' });
+    }
+    if (res && res.status === 'otp_required') {
+      return this.output.data({ status: 'otp_required', email: res.email || '' });
+    }
+    return this.output.data({ status: 'error', error: (res && res.error) || 'unexpected_error' });
   }
 
   /**
@@ -185,7 +362,9 @@ class Register extends Loby {
    */
   async initiate() {
     try {
-      if (!APPLECREDS) {
+      // APPLECREDS is a frozen object even when loading failed, so the check
+      // has to be on a field: without a Services ID no authorize URL is valid.
+      if (!APPLECREDS.service_id) {
         return this.output.data({ status: 'error', error: 'credentials_missing' });
       }
 
