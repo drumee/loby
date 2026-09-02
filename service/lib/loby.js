@@ -27,6 +27,14 @@ const { resolve } = require("path");
 const { template, isEmpty, isArray } = require("lodash");
 
 const { sendAs, legalFooterText } = require("./mail-sender");
+const {
+  normaliseClient, oauthStateFor, clientFromState, statePrefixFor,
+  mobileReturnUrl, mintHandoffCode, HANDOFF_TTL: OAUTH_HANDOFF_TTL,
+} = require("./oauth-mobile");
+
+// How long a parked state may wait; matches the callback's own TTL. The
+// hand-off TTL lives beside the claim rules in oauth-mobile.js.
+const OAUTH_STATE_TTL = 600;
 
 class Account extends Entity {
 
@@ -152,6 +160,145 @@ class Account extends Entity {
    */
   _destFromInput() {
     return this._sanitiseDest(this.input.get("dest"));
+  }
+
+  /**
+   * The mobile client that started this flow, or null for the web widget.
+   * Whitelisted in oauth-mobile.js; anything else is the web behaviour.
+   * @returns {string|null}
+   */
+  _clientFromInput() {
+    return normaliseClient(this.input.get("client"));
+  }
+
+  /**
+   * Mint the state for a provider, carrying the mobile client when one asked.
+   * @param {"g"|"a"} prefix
+   * @param {string|null} client
+   */
+  oauthStateFor(prefix, client) {
+    return oauthStateFor(prefix, client);
+  }
+
+  /**
+   * Which mobile client a callback belongs to, read from the state param
+   * alone. Decided before any provider call or row read, so every exit of the
+   * callback — a cancelled consent, an expired row, an exchange failure in the
+   * catch — can still return to the app.
+   * @param {*} state
+   * @returns {string|null}
+   */
+  clientFromState(state) {
+    return clientFromState(state);
+  }
+
+  /**
+   * Drop expired parked rows so no scheduled job is needed.
+   *
+   * MOBILE PATHS ONLY (a mobile initiate, the hand-off insert). The web flow
+   * never touches oauth_handoff, and the table is created by the same
+   * deployment that enables mobile — so the web sign-in cannot depend on a
+   * table an instance may not have yet. Expired rows are unreadable anyway
+   * (every SELECT carries its own ctime window); this is hygiene.
+   */
+  async sweepOauthTables() {
+    await this.yp.await_query(
+      "DELETE FROM oauth_state WHERE ctime < UNIX_TIMESTAMP() - ?", OAUTH_STATE_TTL);
+    await this.yp.await_query(
+      "DELETE FROM oauth_handoff WHERE ctime < UNIX_TIMESTAMP() - ?", OAUTH_HANDOFF_TTL);
+  }
+
+  /**
+   * Consume the oauth_state row for `state`, the ONLY reader of that table.
+   *
+   * Prefix-checked against the provider so a nonce row or another provider's
+   * state cannot be spent here, and deleted with an affected-row check so two
+   * callbacks racing on the same state produce exactly one winner. Called on
+   * every exit that has a state param — a cancelled consent consumes its row
+   * too, so a state can never be replayed after the user declined.
+   *
+   * @param {*} state
+   * @param {string} provider
+   * @returns {Promise<{error:string}|{session_id:string, ref:string, utm:Object, dest:*}>}
+   */
+  async resolveOAuthState(state, provider) {
+    if (!state) {
+      this.warn(`[Auth] Missing state parameter from ${provider}`);
+      return { error: "missing_state" };
+    }
+    const prefix = statePrefixFor(provider);
+    if (!prefix || !String(state).startsWith(prefix)) {
+      this.warn(`[Auth] State does not belong to ${provider}`);
+      return { error: "invalid_state" };
+    }
+    // SELECT * (not an explicit column list) so this keeps working on
+    // databases that don't have the optional oauth_state.ref / utm_* columns
+    // yet — those simply come back undefined there.
+    const {
+      validState, session_id, ref, dest,
+      utm_source, utm_medium, utm_campaign, utm_content,
+    } = await this.yp.await_query(
+      "SELECT 1 validState, s.* FROM oauth_state s WHERE state = ? AND ctime > UNIX_TIMESTAMP() - ? LIMIT 1",
+      state, OAUTH_STATE_TTL
+    ) || {};
+    if (!validState) {
+      this.warn(`[Auth] Invalid or expired state for ${provider}`);
+      return { error: "invalid_state" };
+    }
+    const del = await this.yp.await_query("DELETE FROM oauth_state WHERE state = ?", state);
+    if (!del || del.affectedRows !== 1) {
+      this.warn(`[Auth] State already consumed for ${provider}`);
+      return { error: "invalid_state" };
+    }
+    // The campaign this visit arrived on, recovered from the state row the
+    // same way `ref` is. Only the tags that were actually parked — an empty
+    // object means the visit carried no campaign, which is the common case.
+    const utm = {};
+    for (const [k, v] of Object.entries({
+      utm_source, utm_medium, utm_campaign, utm_content,
+    })) {
+      if (v) utm[k] = String(v).trim().slice(0, 64);
+    }
+    return { session_id, ref: ref || "", utm, dest };
+  }
+
+  /**
+   * Park a verified provider profile for the app to redeem (oauth.claim).
+   *
+   * The callback runs in a browser sheet that holds no app session, so it
+   * cannot sign the app in; it also must not sign in the session that called
+   * initiate, because that binding is what a phished authUrl would exploit.
+   * The row therefore carries BOTH the initiator's session id and a one-time
+   * code: the code reaches only the device that completed consent, the
+   * session id is held only by the app, and the claim needs both.
+   *
+   * @param {{session_id:string, ref:string, utm:Object}} ctx from resolveOAuthState
+   * @param {Object} profile the provider profile, incl. `provider`
+   * @returns {Promise<string>} the code
+   */
+  async stashOauthHandoff(ctx, profile) {
+    const code = mintHandoffCode();
+    const parked = { ...profile, ref: ctx.ref || "", utm: ctx.utm || {} };
+    await this.yp.await_query(
+      "INSERT INTO oauth_handoff (code, session_id, provider, profile, ctime) VALUES (?, ?, ?, ?, UNIX_TIMESTAMP())",
+      code, ctx.session_id, profile.provider, JSON.stringify(parked)
+    );
+    return code;
+  }
+
+  /**
+   * Send the auth sheet back to the app. A 302, not a scripted navigation:
+   * Chrome Custom Tabs follow a server redirect to a custom scheme without
+   * user activation, and ASWebAuthenticationSession matches it against its
+   * callbackURLScheme. No cookie is set — the app's own session is the one
+   * that will be signed in, at claim time.
+   * @param {string} client
+   * @param {string} provider
+   * @param {{code?:string, error?:string}} params
+   */
+  sendMobileReturn(client, provider, params) {
+    this.output.set_header("Cache-Control", "no-cache, no-store, must-revalidate");
+    this.output.redirect(mobileReturnUrl(client, provider, params));
   }
 
   /**
@@ -390,7 +537,8 @@ class Account extends Entity {
   getOAuthCode(provider, quiet = false) {
     const code = this.input.get(Attr.code);
     if (!code || !/^[A-Za-z0-9-_./]+$/.test(code)) {
-      this.warn(`[Auth] Missing or invalid OAuth code from ${provider}`, Attr.code, code);
+      // The value is an authorization code: log its presence, not the code.
+      this.warn(`[Auth] Missing or invalid OAuth code from ${provider}`, { present: Boolean(code) });
       // quiet: the caller sends its own response (e.g. a signin redirect)
       if (!quiet) this.output.data({ status: 'error', error: 'invalid_code' });
       return null
@@ -398,11 +546,18 @@ class Account extends Entity {
     return code;
   }
 
-  /** */
-  async addUser(profile) {
+  /**
+   * Create the account for a provider identity nobody has yet, link it, seed
+   * it, and open the session `session_id` — the session the caller resolved
+   * (the state row's on the web, the claiming app's on mobile), never this
+   * request's own: the web callback and the mobile claim arrive on different
+   * requests from the session that must end up signed in.
+   * @param {Object} profile
+   * @param {string} session_id
+   */
+  async addUser(profile, session_id) {
     let { email, provider_id, provider, firstname, lastname, access_token, refresh_token, is_private_email = 0 } = profile;
     this.debug(`[Auth] addUser...`);
-    let session_id = this.input.sid()
 
     // Double-check email doesn't exist
     let existingUser = await this.yp.await_proc('drumate_exists', email);
@@ -474,7 +629,7 @@ class Account extends Entity {
       throw new Error(`Failed to link OAuth account: ${linkError.message}`);
     }
 
-    this.debug(`[Auth] OAuth account linked for user ${newUserId}, ${session_id}`);
+    this.debug(`[Auth] OAuth account linked (${provider})`);
 
     // Brand-new OAuth account: seed the default top-level folders (Photos,
     // Documents, Videos) just like the email-signup path (signup.create_account).
@@ -514,7 +669,11 @@ class Account extends Entity {
     finalSessionData = toArray(finalSessionData)[0];
 
     if (finalSessionData && finalSessionData.status === 'ok') {
-      this.debug(`[Auth] Sign-up complete for ${email}`);
+      // create_account ran with autosignin=0, so nothing has logged this
+      // connection yet: the session was opened by session_login_with_oauth,
+      // which writes no services_log row.
+      await this._logConnection(finalSessionData.id);
+      this.debug(`[Auth] Sign-up complete (${provider})`);
       return (finalSessionData);
     } else {
       this.warn(`[Auth] Failed to get session after sign-up:`, finalSessionData);
@@ -554,49 +713,34 @@ class Account extends Entity {
     }
   }
 
+  /**
+   * The web callback: consume the state row, then complete the sign-in for
+   * the session that row names. Both halves are reused separately by the
+   * mobile flow (the callback only parks; oauth.claim completes).
+   * @param {Object} profile
+   */
   async handleOAuthCallback(profile) {
+    const ctx = await this.resolveOAuthState(this.input.get(Attr.state), profile.provider);
+    if (ctx.error) return { status: 'error', error: ctx.error };
+    return this.completeOAuthSignin(profile, ctx);
+  }
+
+  /**
+   * Sign the provider identity into `ctx.session_id`: existing link (A),
+   * email known but unlinked (B), brand-new account (C) or 2FA pending (D).
+   * @param {Object} profile provider profile incl. `provider`
+   * @param {{session_id:string, ref?:string, utm?:Object, dest?:*}} ctx
+   */
+  async completeOAuthSignin(profile, ctx) {
     try {
 
       const { email, provider_id, provider, access_token, refresh_token } = profile;
-      const state = this.input.get(Attr.state);
-      if (!state) {
-        this.warn(`[Auth] Missing state parameter from ${provider}`);
-        return { status: 'error', error: 'missing_state' };
-      }
-
-      // SELECT * (not an explicit column list) so this keeps working on
-      // databases that don't have the optional oauth_state.ref / utm_* columns
-      // yet — those simply come back undefined there.
-      const {
-        validState, session_id, ref, dest,
-        utm_source, utm_medium, utm_campaign, utm_content,
-      } = await this.yp.await_query(
-        'SELECT 1 validState, s.* FROM oauth_state s WHERE state = ? AND ctime > UNIX_TIMESTAMP() - 600 LIMIT 1',
-        state
-      ) || {};
-
-      if (!validState) {
-        this.warn(`[Auth] Invalid or expired state: ${state}`);
-        return { status: 'error', error: 'invalid_state' };
-      }
-
-      // const session_id = this.input.sid()
-
-      // Delete used state
-      await this.yp.await_query('DELETE FROM oauth_state WHERE state = ?', state);
-
-      // The campaign this visit arrived on, recovered from the state row the
-      // same way `ref` is. Only the tags that were actually parked — an empty
-      // object means the visit carried no campaign, which is the common case.
-      const utm = {};
-      for (const [k, v] of Object.entries({
-        utm_source, utm_medium, utm_campaign, utm_content,
-      })) {
-        if (v) utm[k] = String(v).trim().slice(0, 64);
-      }
+      const { session_id, dest } = ctx;
+      const ref = ctx.ref || "";
+      const utm = ctx.utm || {};
 
       const domain_name = this.input.host();
-      this.debug(`[Auth] OAuth callback: email=${email},session_id=${session_id}, provider=${provider}, provider_id=${provider_id}`);
+      this.debug(`[Auth] OAuth sign-in: provider=${provider}`);
 
       // Try to sign in
       let sessionData = await this.yp.await_proc(
@@ -626,12 +770,11 @@ class Account extends Entity {
            WHERE user_id = ? AND provider = ?`,
           access_token, refresh_token, sessionData.id, provider
         );
-        // A completed sign-in, and the only one on this path: the session was
-        // opened by session_login_with_oauth, which writes no services_log row.
-        // CASE C below needs no equivalent -- it signs up through
-        // create_account, which finishes on session.signin() and is logged
-        // there (stage's signup.create_account rows). CASE D is finalized in
-        // oauth.verify_otp and logged there.
+        // The session was opened by session_login_with_oauth, which writes no
+        // services_log row, so it is logged here. CASE C logs inside addUser
+        // (create_account runs with autosignin=0 there, so session.signin()
+        // never logs it); CASE D is finalized in oauth.verify_otp and logged
+        // there.
         await this._logConnection(sessionData.id);
         sessionData.method = 'signin';
         // Where this visit was heading, recovered from the state row and
@@ -662,7 +805,7 @@ class Account extends Entity {
         // and unreachable from here.
         if (ref) profile.ref = ref;
         if (Object.keys(utm).length) profile.utm = utm;
-        let res = await this.addUser(profile);
+        let res = await this.addUser(profile, session_id);
         res.method = 'signup';
         res.dest = this._sanitiseDest(dest);
         return res;
@@ -697,7 +840,7 @@ class Account extends Entity {
       return { status: 'error', error: 'unexpected_error' };
 
     } catch (error) {
-      this.warn(`[Auth] OAuth callback exception:`, error);
+      this.warn(`[Auth] OAuth sign-in exception:`, error && error.message);
       throw error;
     }
   }
@@ -830,9 +973,15 @@ class Account extends Entity {
    * OAuth callback error paths would otherwise leave the browser on a raw
    * JSON/400 page (or a 504 when the provider call hangs) — bounce it back
    * to the signin screen with a status flag instead.
+   * A mobile client is sent to its own scheme instead (302, no cookie).
    * @param {string} error
+   * @param {string|null} [client] from clientFromState
+   * @param {string} [provider] required when client is set
    */
-  sendOauthError(error) {
+  sendOauthError(error, client = null, provider = null) {
+    if (client && provider) {
+      return this.sendMobileReturn(client, provider, { error: error || 'oauth_failed' });
+    }
     const { main_domain, endpoint_path } = sysEnv();
     const redirect = `https://${main_domain}${endpoint_path}/#/welcome/signin?oauth_error=${encodeURIComponent(error || 'oauth_failed')}`;
     const tpl = resolve(__dirname, '../templates/oauth-error.html');

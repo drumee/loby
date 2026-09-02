@@ -1,5 +1,13 @@
 {
   "services": {
+    "claim": {
+      "doc": "Redeem the one-time hand-off code a mobile OAuth callback issued; signs in the calling session when it is the one that started the flow.",
+      "scope": "hub",
+      "permission": {
+        "src": "anonymous",
+        "fast_check": "public-api"
+      }
+    },
     "verify_otp": {
       "doc": "Verify the 2FA OTP for a pending OAuth sign-in and finalize the session.",
       "scope": "hub",

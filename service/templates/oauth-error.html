@@ -4,7 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign-in interrupted</title>
-  <script>location.replace('<%= redirect %>');</script>
+  <!-- lodash's interpolate delimiter is RAW, so the URL is serialised as a
+       JSON string literal rather than dropped into a quoted one: an apostrophe
+       in the value stays inside the string instead of ending it. -->
+  <script>location.replace(<%= JSON.stringify(redirect) %>);</script>
   <style>
     html, body { height: 100%; margin: 0; }
     body {

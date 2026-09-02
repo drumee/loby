@@ -1,12 +1,11 @@
 
-const { sysEnv } = require('@drumee/server-essentials');
+const { sysEnv, Attr } = require('@drumee/server-essentials');
 const { resolve } = require('path');
 const { readFileSync: readJson } = require('jsonfile');
 const { readFileSync } = require('fs');
 const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
 const axios = require('axios');
-const { randomUUID } = require('crypto');
 const Loby = require('./lib/loby');
 const { credential_dir, svc_location, endpoint_path, main_domain } = sysEnv();
 
@@ -194,7 +193,12 @@ class Register extends Loby {
       // const redirect_uri = `https://${main_domain}${svc_location}/apple.callback?`;
       const redirect_uri = `https://${main_domain}${svc_location}/apple.callback`;
 
-      const state = `a_${randomUUID()}`;
+      // A mobile client names itself so the callback can send the auth sheet
+      // back to the app instead of the web landing page. It travels inside the
+      // state (`a_<uuid>~mobile-stage`), see lib/oauth-mobile.js.
+      const client = this._clientFromInput();
+      const state = this.oauthStateFor('a', client);
+      if (client) await this.sweepOauthTables();
       // Referral attribution: the signup UI forwards the ?ref=<member>
       // handle with initiate. Persist it on the state row so it survives
       // the redirect out to the provider and back — the server-side
@@ -252,7 +256,7 @@ class Register extends Loby {
         `&response_mode=form_post` +
         `&scope=${encodeURIComponent("name email")}` +
         `&state=${state}`;
-      this.debug('[Auth] Apple OAuth URL generated with state:', this.input.sid(), state);
+      this.debug('[Auth] Apple OAuth URL generated', { mobile: Boolean(client) });
       this.output.data({ success: true, authUrl, state: state, status: 'prompt' });
     } catch (error) {
       this.warn('[Auth] Error initiating Apple OAuth:', error);
@@ -268,15 +272,29 @@ class Register extends Loby {
    * @returns
    */
   async callback() {
+    // Resolved from the state param alone and outside the try, so the catch
+    // below and the no-code exit can both send a mobile client back to its app.
+    const stateParam = this.input.get(Attr.state);
+    const client = this.clientFromState(stateParam);
     try {
       const code = this.getOAuthCode('apple', true);
       if (!code) {
         // No/invalid code — typically the user cancelled on Apple's consent
-        // screen, which comes back as error=user_cancelled_authorize.
-        return this.sendOauthError('access_denied');
+        // screen, which comes back as error=user_cancelled_authorize. The state
+        // row is consumed so a declined flow cannot be replayed.
+        await this.resolveOAuthState(stateParam, 'apple');
+        return this.sendOauthError('access_denied', client, 'apple');
       }
       const profile = await this._getAppleProfile(code);
       profile.provider = 'apple';
+      if (client) {
+        // Mobile: verify and park, never sign in here — the app redeems the
+        // code with oauth.claim over its own session (lib/loby.js).
+        const ctx = await this.resolveOAuthState(stateParam, 'apple');
+        if (ctx.error) return this.sendOauthError(ctx.error, client, 'apple');
+        const handoff = await this.stashOauthHandoff(ctx, profile);
+        return this.sendMobileReturn(client, 'apple', { code: handoff });
+      }
       let res = await this.handleOAuthCallback(profile);
       // 2FA required: the session is pending, not finalized. Keep the pending
       // session cookie (sendHtml/setAuthorization) and bounce the browser to the
@@ -322,7 +340,10 @@ class Register extends Loby {
       // id_token — the user gets the signin screen back instead of a hung
       // request or a raw 500 page.
       this.warn('[Auth] Apple OAuth callback failed:', e.message || e);
-      this.sendOauthError('oauth_failed');
+      // The state row is consumed on this exit too, so a failed exchange
+      // cannot be retried against the same state.
+      await this.resolveOAuthState(stateParam, 'apple').catch(() => null);
+      this.sendOauthError('oauth_failed', client, 'apple');
     }
   }
 
