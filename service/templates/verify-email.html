@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,7 +10,13 @@
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fff;">
     <tr>
       <td align="center" style="padding:0;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:100%;background:#fff;border:1px solid #d1d1d6;border-radius:8px;overflow:hidden;">
+        <!-- 600px is the standard email frame width, and the width the sibling
+             templates use. Fluid below it, capped above: uncapped it stretched
+             to the whole viewport, so on a desktop inbox the body copy ran the
+             full width of the screen. The width ATTRIBUTE has to be a number
+             for Outlook, which ignores the style and treats width="100%" as a
+             broken value. Centring comes from the align="center" on the td. -->
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#fff;border:1px solid #d1d1d6;border-radius:8px;overflow:hidden;">
 
           <!-- Header: purple signature -->
           <tr>
@@ -59,9 +65,15 @@
               <!-- 24px gap -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:24px;line-height:24px;font-size:0;">&nbsp;</td></tr></table>
 
-              <!-- Fallback link -->
-              <p style="margin:0 0 4px 0;padding:0;text-align:center;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:400;font-size:16px;line-height:1.4;color:#34343a;"><%= fallback_label %></p>
-              <p style="margin:0;padding:0;text-align:center;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:400;font-size:16px;line-height:1.4;word-break:break-all;color:#000000;"><%= verify_url %></p>
+              <!-- Fallback link. The href is the same verification URL as the
+                   button; only the visible text differs. It used to print that
+                   URL as body text, token and all, which is the shape a
+                   phishing template has: a call to action beside a long opaque
+                   string. The affordance it existed for is kept — the anchor is
+                   still right-click-copyable — and readers who genuinely cannot
+                   follow a link now get the full URL in the text/plain part,
+                   which is where a copy-and-paste fallback belongs. -->
+              <p style="margin:0;padding:0;text-align:center;font-family:'Geist','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:400;font-size:16px;line-height:1.4;color:#34343a;"><a href="<%= verify_url %>" style="color:#433cc5;text-decoration:underline;"><%= fallback_label %></a></p>
 
               <!-- 40px gap -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:40px;line-height:40px;font-size:0;">&nbsp;</td></tr></table>
@@ -106,41 +118,50 @@
           <tr>
             <td bgcolor="#f2f2f7" align="center" style="background:#f2f2f7;border-top:1px solid #d1d1d6;padding:32px;text-align:center;">
 
-              <!-- Social badges -->
+              <!-- Social badges. The channel set and URLs are the ones
+                   analytics-server's claim-reward.html carries (its footer is
+                   the Figma "Email marketing" node, and is the canonical one).
+                   This template used to point at five channels, three of which
+                   were placeholders never corrected: discord.gg/drumee is a
+                   DEAD invite (the API answers "Unknown Invite", code 10006),
+                   and x.com/drumee is not the handle — DrumeeOS is. Mailing a
+                   dead invite is both a bad first impression on the earliest
+                   mail an account receives and another unresolvable third-party
+                   link for a receiver to weigh.
+
+                   Sizes are per-icon on purpose. The published glyphs are not
+                   all square — linkedin.png is 13x9 — so the old uniform
+                   16x16 stretched them; these are each asset's own proportions
+                   at the design's size.
+
+                   bgcolor #dcdbf5 is the flattened equivalent of the design's
+                   rgba(132,126,255,0.2) over this footer's #f2f2f7. It was
+                   authored as rgba, which Outlook's Word engine does not
+                   support, so the circle simply did not paint there.
+
+                   Keep this block byte-identical to signup-completed.html's;
+                   they have always matched, and a diff between them is a
+                   mistake rather than a variation. -->
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
                 <tr>
                   <td align="center" valign="middle" style="padding:0 4px;">
-                    <a href="https://x.com/drumee" style="text-decoration:none;">
-                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="32" height="32" style="width:32px;height:32px;border-radius:50%;background:rgba(132,126,255,0.2);">
-                        <tr><td align="center" valign="middle" width="32" height="32" style="width:32px;height:32px;text-align:center;vertical-align:middle;line-height:0;font-size:0;"><img src="https://content.app.drumee.com/icons/x.png" width="16" height="16" alt="X" style="display:inline-block;border:0;outline:0;vertical-align:middle;"></td></tr>
+                    <a href="https://x.com/DrumeeOS" style="text-decoration:none;">
+                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="32" height="32" bgcolor="#dcdbf5" style="width:32px;height:32px;border-radius:50%;background:#dcdbf5;">
+                        <tr><td align="center" valign="middle" width="32" height="32" style="width:32px;height:32px;text-align:center;vertical-align:middle;line-height:0;font-size:0;"><img src="https://content.app.drumee.com/icons/x.png" width="14" height="14" alt="X" style="display:inline-block;border:0;outline:0;vertical-align:middle;"></td></tr>
                       </table>
                     </a>
                   </td>
                   <td align="center" valign="middle" style="padding:0 4px;">
-                    <a href="https://discord.gg/drumee" style="text-decoration:none;">
-                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="32" height="32" style="width:32px;height:32px;border-radius:50%;background:rgba(132,126,255,0.2);">
-                        <tr><td align="center" valign="middle" width="32" height="32" style="width:32px;height:32px;text-align:center;vertical-align:middle;line-height:0;font-size:0;"><img src="https://content.app.drumee.com/icons/discord.png" width="16" height="16" alt="Discord" style="display:inline-block;border:0;outline:0;vertical-align:middle;"></td></tr>
+                    <a href="https://t.me/DrumeeAnnChat" style="text-decoration:none;">
+                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="32" height="32" bgcolor="#dcdbf5" style="width:32px;height:32px;border-radius:50%;background:#dcdbf5;">
+                        <tr><td align="center" valign="middle" width="32" height="32" style="width:32px;height:32px;text-align:center;vertical-align:middle;line-height:0;font-size:0;"><img src="https://content.app.drumee.com/icons/telegram.png" width="18" height="17" alt="Telegram" style="display:inline-block;border:0;outline:0;vertical-align:middle;"></td></tr>
                       </table>
                     </a>
                   </td>
                   <td align="center" valign="middle" style="padding:0 4px;">
-                    <a href="https://www.linkedin.com/company/drumee" style="text-decoration:none;">
-                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="32" height="32" style="width:32px;height:32px;border-radius:50%;background:rgba(132,126,255,0.2);">
-                        <tr><td align="center" valign="middle" width="32" height="32" style="width:32px;height:32px;text-align:center;vertical-align:middle;line-height:0;font-size:0;"><img src="https://content.app.drumee.com/icons/linkedin.png" width="16" height="16" alt="LinkedIn" style="display:inline-block;border:0;outline:0;vertical-align:middle;"></td></tr>
-                      </table>
-                    </a>
-                  </td>
-                  <td align="center" valign="middle" style="padding:0 4px;">
-                    <a href="https://www.tiktok.com/@drumee" style="text-decoration:none;">
-                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="32" height="32" style="width:32px;height:32px;border-radius:50%;background:rgba(132,126,255,0.2);">
-                        <tr><td align="center" valign="middle" width="32" height="32" style="width:32px;height:32px;text-align:center;vertical-align:middle;line-height:0;font-size:0;"><img src="https://content.app.drumee.com/icons/tiktok.png" width="16" height="16" alt="TikTok" style="display:inline-block;border:0;outline:0;vertical-align:middle;"></td></tr>
-                      </table>
-                    </a>
-                  </td>
-                  <td align="center" valign="middle" style="padding:0 4px;">
-                    <a href="https://www.instagram.com/drumee" style="text-decoration:none;">
-                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="32" height="32" style="width:32px;height:32px;border-radius:50%;background:rgba(132,126,255,0.2);">
-                        <tr><td align="center" valign="middle" width="32" height="32" style="width:32px;height:32px;text-align:center;vertical-align:middle;line-height:0;font-size:0;"><img src="https://content.app.drumee.com/icons/instagram.png" width="16" height="16" alt="Instagram" style="display:inline-block;border:0;outline:0;vertical-align:middle;"></td></tr>
+                    <a href="https://www.linkedin.com/company/drumee/posts/?feedView=all" style="text-decoration:none;">
+                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="32" height="32" bgcolor="#dcdbf5" style="width:32px;height:32px;border-radius:50%;background:#dcdbf5;">
+                        <tr><td align="center" valign="middle" width="32" height="32" style="width:32px;height:32px;text-align:center;vertical-align:middle;line-height:0;font-size:0;"><img src="https://content.app.drumee.com/icons/linkedin.png" width="13" height="9" alt="LinkedIn" style="display:inline-block;border:0;outline:0;vertical-align:middle;"></td></tr>
                       </table>
                     </a>
                   </td>

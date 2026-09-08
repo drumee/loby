@@ -7,7 +7,58 @@
   <% if (typeof auto_redirect !== 'undefined' && auto_redirect) { %>
   <!-- Existing OAuth sign-in: session is already established, go straight to
        the desk without showing the welcome card. -->
-  <script>location.replace('<%= home %>');</script>
+  <!-- JSON.stringify, not a URL pasted between quotes.
+       lib/loby.js renders these templates with LODASH, whose equals-delimiter
+       is the RAW one — the reverse of EJS, where it escapes. `home` now carries
+       a destination derived from the request (see _sanitiseDest in
+       lib/loby.js), so an apostrophe in it would break out of the string
+       literal into script context, on the page that runs immediately after
+       authentication. Stringify emits its own quotes and escapes theirs, so the
+       quoting stops being a hand-maintained property. The sanitiser refuses
+       quotes as well; this is the half that does not depend on anyone
+       remembering which delimiter is which.
+
+       EDITORS: do not write either lodash delimiter literally in a comment in
+       this file. lodash scans the whole template, comments included, so a
+       delimiter written to explain itself gets compiled — which is exactly how
+       this comment broke the build once. -->
+  <script>location.replace(<%= JSON.stringify(home) %>);</script>
+  <% } %>
+  <% if (typeof is_new !== 'undefined' && is_new) { %>
+  <!-- New OAuth account: report the Google Ads sign-up conversion
+       ("Lượt đăng ký"). This page IS the "đăng ký thành công" page for the SSO
+       route — the account is created by the callback that renders it, and the
+       email/password route's in-app call never runs here because the app bundle
+       (which carries the Google tag) never loads on this page. Hence a
+       standalone snippet. The interstitial runs in the same browser that
+       clicked the ad, so the gclid cookie is still there and Ads can attribute
+       the signup. Hostname-gated: self-hosted AGPL deployments must not report
+       into our Ads account. Queue first, loader after — the conversion is
+       queued before gtag.js lands, whatever the network does.
+
+       KEEP THE LABEL IN SYNC with _reportSignupConversion in the signup plugin
+       (signup/src/widgets/form/index.js). These are the only two sign-up
+       conversion call sites and they are mutually exclusive per user — SSO here,
+       email/password there — so both must feed the SAME conversion action or
+       the campaign's reported signups silently exclude one whole route.
+       No value/currency: the Ads console snippet carries none, so whatever the
+       conversion action is configured with applies. -->
+  <script>
+    (function () {
+      if (!/(^|\.)drumee\.com$/i.test(location.hostname)) return;
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = window.gtag || function () { dataLayer.push(arguments); };
+      gtag('js', new Date());
+      gtag('config', 'AW-18350168481');
+      gtag('event', 'conversion', {
+        send_to: 'AW-18350168481/-ZHOCLnjv-EcEKGzha5E'
+      });
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://www.googletagmanager.com/gtag/js?id=AW-18350168481';
+      document.head.appendChild(s);
+    })();
+  </script>
   <% } %>
   <% if (typeof is_new !== 'undefined' && is_new) { %>
   <!-- New OAuth account: report the Google Ads sign-up conversion
@@ -135,7 +186,10 @@
       <p class="card__text">
         Your Drumee account has been successfully created. We're glad to have you &mdash; let's get your workspace ready.
       </p>
-      <a id="goto-desk" class="card__cta" href="<%= home %>">Discover your Drumee desk</a>
+      <!-- The new-account exit, on lodash's ESCAPING delimiter (the dash one).
+           Same request-derived URL as the redirect above, and an attribute is
+           as escapable as a string literal. -->
+      <a id="goto-desk" class="card__cta" href="<%- home %>">Discover your Drumee desk</a>
       <p class="card__footer">The Drumee team</p>
     </div>
   </div>
