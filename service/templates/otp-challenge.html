@@ -4,7 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Verifying…</title>
-  <script>location.replace('<%= redirect %>');</script>
+  <!-- See the note in account-created.html: lodash's equals-delimiter is the
+       RAW one, and `redirect` now carries a dest param derived from the
+       request. -->
+  <script>location.replace(<%= JSON.stringify(redirect) %>);</script>
   <style>
     html, body { height: 100%; margin: 0; }
     body {
