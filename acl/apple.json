@@ -16,6 +16,22 @@
         "src": "anonymous",
         "fast_check": "public-api"
       }
+    },
+    "native_nonce": {
+      "doc": "Mint the nonce a native (iOS) Sign in with Apple request must carry; bound to the calling session, single use.",
+      "scope": "hub",
+      "permission": {
+        "src": "anonymous",
+        "fast_check": "public-api"
+      }
+    },
+    "native_signin": {
+      "doc": "Verify a native (iOS) Apple identity token against this deployment's bundle id and sign the calling session in.",
+      "scope": "hub",
+      "permission": {
+        "src": "anonymous",
+        "fast_check": "public-api"
+      }
     }
   },
   "modules": {

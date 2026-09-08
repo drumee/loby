@@ -5,6 +5,7 @@ const { toArray } = require('@drumee/server-essentials').utils;
 const { resolve } = require('path');
 const { isEmpty, isArray } = require('lodash');
 const Loby = require("./lib/loby")
+const { sendAs, supportText } = require("./lib/mail-sender");
 const { uniqueNamesGenerator, colors, animals, adjectives } = require('unique-names-generator');
 const { randomBytes } = require('crypto');
 
@@ -134,26 +135,53 @@ class Signup extends Loby {
       // NOTE: Cache.lex() returns the key name itself for keys missing from the
       // lexicon, so `lex._x || "fallback"` keeps the raw key. These verification
       // strings aren't in the lexicon, so use literal copy here.
+      //
+      // One sentence with two endings: the HTML part has a button to click, the
+      // plain-text part has a URL to open, and telling a text reader to click a
+      // button that isn't there is how a mechanically-derived text body reads.
+      const intro_lead = "Welcome to Drumee! We're excited to have you onboard. To complete your registration and access our services, please verify your email address";
       const data = {
         heading: "Verify Your Email Address",
         subheading: "Thank you for registering with Drumee",
         hello: `Hello ${_email},`,
-        intro: "Welcome to Drumee! We're excited to have you onboard. To complete your registration and access our services, please verify your email address by clicking the button below.",
+        intro: `${intro_lead} by clicking the button below.`,
         button_label: "Verify Email Address",
         verify_url,
-        fallback_label: "Or copy and paste this link into your browser:",
+        // Anchor text now, not a label above a printed URL — the template
+        // stopped rendering the tokenised link as visible body copy.
+        fallback_label: "Trouble with the button? Use this verification link instead.",
         security_title: "Security Note",
         security_note: "This verification link will expire in 24 hours. For your security, please do not share this email with anyone.",
       };
+      const subject = "Verify your Drumee email address";
       const msg = new Messenger({
-        subject: "Verify your Drumee email address",
+        subject,
         recipient: _email,
         handler: this.exception.email,
       });
       const tpl = resolve(__dirname, "./templates/verify-email.html");
       const html = msg.renderFrom(tpl, data);
-      await msg.send({ html });
-      return 1;
+      // Written from `data`, not stripped out of the rendered HTML, so the two
+      // parts say the same thing without the layout tables' spacer cells and
+      // icon alt text landing in the plain-text body. This is also the ONE
+      // place the full tokenised URL is shown as text: a plain-text reader has
+      // no anchor to follow, so the link has to be copyable here.
+      const text = [
+        data.heading,
+        "",
+        data.hello,
+        "",
+        `${intro_lead} by opening the link below.`,
+        "",
+        `${data.button_label}: ${verify_url}`,
+        "",
+        `${data.security_title}: ${data.security_note}`,
+        "",
+        supportText(),
+      ].join("\n");
+      // sendAs, not msg.send: the pinned Messenger re-wraps the From and turns
+      // a full mailbox into a "Drumee>" display name. See lib/mail-sender.
+      return await sendAs(msg, { to: _email, subject, html, text });
     } catch (e) {
       this.warn("[_send_verification_email] failed", e);
       return 0;
@@ -204,15 +232,34 @@ class Signup extends Loby {
     try {
       const homepath = this.input.homepath();
       const home = `${homepath}#/desk`;
+      const subject = "Your Drumee account is all set";
       const msg = new Messenger({
-        subject: "Your Drumee account is all set",
+        subject,
         recipient: _email,
         handler: this.exception.email,
       });
       const tpl = resolve(__dirname, "./templates/signup-completed.html");
       const html = msg.renderFrom(tpl, { home, email: _email });
-      await msg.send({ html });
-      return 1;
+      // Mirrors the template's own order, greeting included, and drops the
+      // greeting line on the same condition the template does — send_welcome
+      // can reach here with no address resolved.
+      const text = [
+        "Your Drumee account is all set! Thanks for joining us.",
+        "",
+        ...(_email ? [`Hello ${_email},`, ""] : []),
+        "A quick note to confirm your account has been successfully created.",
+        "",
+        "Thank you so much for your interest in Drumee - we're excited to let you discover it.",
+        "",
+        "We're glad to have you!",
+        "",
+        `Discover your Drumee desk here: ${home}`,
+        "",
+        "The Drumee team",
+        "",
+        supportText(),
+      ].join("\n");
+      return await sendAs(msg, { to: _email, subject, html, text });
     } catch (e) {
       this.warn("[_send_signup_completed_email] failed", e);
       return 0;
@@ -352,7 +399,10 @@ class Signup extends Loby {
     // utm_campaign as flat keys. Thread them into args so super.create_account
     // persists profile.utm. Without this, email signups drop UTM attribution.
     const utm = {};
-    for (const k of ["utm_source", "utm_medium", "utm_campaign"]) {
+    // Four keys, not three: utm_content names the post or variant a link is on,
+    // which the UTM builder writes on every link and the click log records.
+    // Without it, "which post brought the signups" has no answer.
+    for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content"]) {
       const v = (this.input.get(k) || "").toString().trim().slice(0, 64);
       if (v) utm[k] = v;
     }

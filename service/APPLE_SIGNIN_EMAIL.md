@@ -66,6 +66,37 @@ users. Do it once in the Apple Developer portal:
   `@privaterelay.appleid.com` address** — migrates the login email to Apple's
   current relay so OTP keeps delivering after a revoke + re-grant rotation.
 
+## Native (iOS) sign-in
+
+The mobile app does not use the web redirect for Apple: App Review expects the
+native `ASAuthorizationController` sheet. The token it hands the app is
+audienced to the **app bundle id**, not the Services ID, so `apple/info.json`
+carries one extra key per deployment:
+
+```json
+{ "team_id": "…", "service_id": "…", "key_id": "…", "key_file": "…",
+  "bundle_id": "com.drumee.app.stage" }
+```
+
+Exactly one `bundle_id` per instance (`stage` → `.stage`, `test` → `.test`,
+`prelive` → `.prelive`): a token minted for another deployment's app must not
+verify here. The App IDs must be grouped under the same primary App ID that owns
+the Services ID, or Apple issues a different `sub` for native than for web and
+the same person gets two accounts. Without `bundle_id` the native services
+answer `credentials_missing` and the web flow is unaffected.
+
+Flow: `apple.native_nonce` mints a nonce bound to the app's session;
+`apple.native_signin {identity_token, nonce, firstname?, lastname?}` verifies the
+token ([lib/apple-token.js](lib/apple-token.js): JWKS signature, issuer, the
+bundle id as audience, expiry, `email_verified`, and `nonce` = SHA-256 of the
+minted value), spends the nonce, and completes the sign-in on the calling
+session — the same path the web callback and the mobile claim use. No
+authorization-code exchange happens, so no refresh token is stored for native
+sign-ins. Name fields arrive only on the first authorization; the app sends
+them and they are persisted when that authorization creates the account — an
+account that already exists (for instance created through the web flow) keeps
+the name it has.
+
 ## What this does NOT (and cannot) fix
 
 - Converting a relay address back to the user's real address. Impossible by design;
