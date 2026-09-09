@@ -131,7 +131,27 @@ class Signup extends Loby {
         return 0;
       }
       const homepath = this.input.homepath();
-      const verify_url = `${homepath}#/welcome/verify?token=${encodeURIComponent(token)}`;
+      // The address rides along WITH the token, and that is load-bearing rather
+      // than cosmetic. resend_verification can only resolve an account from an
+      // email, a LIVE token, or a signup_data row keyed by a session that no
+      // longer exists (create_account stopped establishing one) -- and every
+      // failure that lands the user on the "Verification failed" screen is a
+      // failure of the token: consumed by an earlier click or a mail scanner,
+      // or superseded, since drumate_set_verification_token_v2 DELETEs the
+      // previous row whenever a newer link is minted. So the one credential the
+      // recovery path had was guaranteed dead exactly when recovery was needed,
+      // and Resend answered no_pending_signup forever. Measured on stage:
+      // 25 of 44 outstanding tokens could not be resent, and signup_data held
+      // one row in total.
+      //
+      // It lives in the FRAGMENT, so it is never sent to a server, logged in an
+      // access log, or leaked in a Referer -- same reach as the token beside it,
+      // which is far more sensitive, and the mailbox this arrives in already
+      // knows its own address. Sending it back to resend_verification grants
+      // nothing either: that endpoint already accepts an arbitrary address and
+      // refuses any account whose unverified_email is not already staged.
+      const verify_url = `${homepath}#/welcome/verify?token=${encodeURIComponent(token)}`
+        + `&email=${encodeURIComponent(_email)}`;
       // NOTE: Cache.lex() returns the key name itself for keys missing from the
       // lexicon, so `lex._x || "fallback"` keeps the raw key. These verification
       // strings aren't in the lexicon, so use literal copy here.
