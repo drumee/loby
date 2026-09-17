@@ -26,34 +26,6 @@
   <% } %>
   <% if (typeof is_new !== 'undefined' && is_new) { %>
   <!-- New OAuth account: report the Google Ads sign-up conversion
-       ("Lượt đăng ký"). This interstitial runs in the same browser that
-       clicked the ad, so the gclid cookie is still there and Ads can
-       attribute the signup; the app bundle (which carries the Google tag)
-       never loads on this page, hence a standalone snippet. Hostname-gated:
-       self-hosted AGPL deployments must not report into our Ads account.
-       Queue first, loader after — the conversion is queued before gtag.js
-       lands, whatever the network does. -->
-  <script>
-    (function () {
-      if (!/(^|\.)drumee\.com$/i.test(location.hostname)) return;
-      window.dataLayer = window.dataLayer || [];
-      window.gtag = window.gtag || function () { dataLayer.push(arguments); };
-      gtag('js', new Date());
-      gtag('config', 'AW-18350168481');
-      gtag('event', 'conversion', {
-        send_to: 'AW-18350168481/TMlhCIGxq9scEKGzha5E',
-        value: 1.0,
-        currency: 'VND'
-      });
-      var s = document.createElement('script');
-      s.async = true;
-      s.src = 'https://www.googletagmanager.com/gtag/js?id=AW-18350168481';
-      document.head.appendChild(s);
-    })();
-  </script>
-  <% } %>
-  <% if (typeof is_new !== 'undefined' && is_new) { %>
-  <!-- New OAuth account: report the Google Ads sign-up conversion
        ("Lượt đăng ký"). This page IS the "đăng ký thành công" page for the SSO
        route — the account is created by the callback that renders it, and the
        email/password route's in-app call never runs here because the app bundle
@@ -70,7 +42,13 @@
        email/password there — so both must feed the SAME conversion action or
        the campaign's reported signups silently exclude one whole route.
        No value/currency: the Ads console snippet carries none, so whatever the
-       conversion action is configured with applies. -->
+       conversion action is configured with applies.
+
+       ONE BLOCK ONLY. A merge once left a second copy of this block here
+       carrying the superseded label TMlhCIGxq9scEKGzha5E, so every SSO signup
+       fed two conversion actions at once and Ads reported twice the signups it
+       had — halving the cost-per-signup it shows and pushing Smart Bidding to
+       overbid on a number that was never real. -->
   <script>
     (function () {
       if (!/(^|\.)drumee\.com$/i.test(location.hostname)) return;
@@ -78,9 +56,20 @@
       window.gtag = window.gtag || function () { dataLayer.push(arguments); };
       gtag('js', new Date());
       gtag('config', 'AW-18350168481');
+      // GA4 property "app.drumee.com". The app bundle configures the same id
+      // (ui-team src/drumee/libs/gtag.js — KEEP IN SYNC), but it never loads on
+      // this interstitial, so without this line the SSO route stays invisible
+      // to GA4 while the email route reports its signup. send_page_view:false:
+      // this card is a redirect step, not a screen worth counting.
+      gtag('config', 'G-9123HGZ86W', { send_page_view: false });
       gtag('event', 'conversion', {
         send_to: 'AW-18350168481/-ZHOCLnjv-EcEKGzha5E'
       });
+      // The GA4 half of the same signup, as GA4's recommended `sign_up` event.
+      // No send_to, so it reaches every configured id: GA4 records it, Ads sees
+      // an ordinary event and ignores it. `method` separates this route from
+      // the email/password one, which sends "password".
+      gtag('event', 'sign_up', { method: 'google' });
       var s = document.createElement('script');
       s.async = true;
       s.src = 'https://www.googletagmanager.com/gtag/js?id=AW-18350168481';
