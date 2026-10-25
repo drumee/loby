@@ -27,6 +27,7 @@ const { resolve } = require("path");
 const { template, isEmpty, isArray } = require("lodash");
 
 const { sendAs, legalFooterText } = require("./mail-sender");
+const { joinOrgOnWorkspaceJoin } = require("./org-membership");
 const {
   normaliseClient, oauthStateFor, clientFromState, statePrefixFor,
   mobileReturnUrl, mintHandoffCode, HANDOFF_TTL: OAUTH_HANDOFF_TTL,
@@ -115,6 +116,9 @@ class Account extends Entity {
           `${hubDbName}.permission_grant`,
           '*', newUser.id, expiry_time, permission, 'system', 'Resolved from pending_invitation on signup'
         );
+        // An internal workspace of an organisation also makes the new account
+        // an organisation member (seat + plan) — see ./org-membership.
+        await joinOrgOnWorkspaceJoin(this, newUser.id, hub_id);
         this.debug("[_resolve_pending_invitation] Added user", newUser.id, "to hub", hub_id);
       } catch (err) {
         this.warn(`[_resolve_pending_invitation] Failed for hub ${hub_id}:`, err && err.message);
