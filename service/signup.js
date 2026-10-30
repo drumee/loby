@@ -432,6 +432,7 @@ class Signup extends Loby {
     }
     if (ref) args.ref = ref;
     if (Object.keys(utm).length) args.utm = utm;
+    args.attribution = this._attributionFromInput();
     // Create the account WITHOUT establishing a session (autosignin = 0).
     // The user stays unauthenticated (registration_verified = 0) until they
     // click the email-verification link. Auto-logging in here would let a page

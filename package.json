@@ -25,6 +25,7 @@
     "@drumee/server-essentials": "^1.2.29",
     "argparse": "^2.0.1",
     "axios": "^1.13.2",
+    "geoip-lite": "^1.2.2",
     "csv-parse": "^5.5.3",
     "csv-stringify": "^6.4.5",
     "google-auth-library": "^10.5.0",

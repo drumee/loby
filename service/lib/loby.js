@@ -37,6 +37,12 @@ const {
 // hand-off TTL lives beside the claim rules in oauth-mobile.js.
 const OAUTH_STATE_TTL = 600;
 
+// Paid-campaign fields and their column widths in yp.campaign_attribution.
+const ATTRIBUTION_FIELDS = {
+  offer: 32, utm_source: 100, utm_medium: 100, utm_campaign: 100, utm_content: 100,
+  utm_term: 100, gclid: 512, li_fat_id: 512, fbclid: 512, ga_client_id: 64,
+};
+
 class Account extends Entity {
 
   /**
@@ -152,6 +158,47 @@ class Account extends Entity {
   }
 
   /**
+   * The paid-campaign fields on this request, flat as the signup UI sends them.
+   * Separate from _utmFromInput: that one has a 64 character clamp the click
+   * ids would not survive, and a consumer that needs the latest campaign. These
+   * are first touch, and `country` is the server's own reading of the caller.
+   *
+   * @returns {Object} only what was present, {} when this is not a campaign visit
+   */
+  _attributionFromInput() {
+    const out = {};
+    for (const [k, max] of Object.entries(ATTRIBUTION_FIELDS)) {
+      const v = (this.input.get(k) || "").toString().trim().slice(0, max);
+      if (v) out[k] = v;
+    }
+    if (!Object.keys(out).length) return out;
+    try {
+      const geo = require("geoip-lite").lookup(this.input.ip());
+      if (geo && geo.country) out.country = geo.country;
+    } catch (e) {
+      this.warn("[attribution] no country —", e && e.message);
+    }
+    return out;
+  }
+
+  /**
+   * Park the campaign fields beside the state row. Its own statement rather
+   * than another tier of the initiate INSERT: a database without the column
+   * just loses this update, and signing in carries on.
+   */
+  async _parkAttribution(state) {
+    try {
+      const a = this._attributionFromInput();
+      if (!Object.keys(a).length) return;
+      await this.yp.await_query(
+        "UPDATE oauth_state SET attribution = ? WHERE state = ?", JSON.stringify(a), state
+      );
+    } catch (e) {
+      this.warn("[Auth] attribution not parked —", e && e.message);
+    }
+  }
+
+  /**
    * The destination this visit named, as a flat request param.
    *
    * Read at initiate and parked on oauth_state beside `ref` and utm_*, for the
@@ -239,7 +286,7 @@ class Account extends Entity {
     // databases that don't have the optional oauth_state.ref / utm_* columns
     // yet — those simply come back undefined there.
     const {
-      validState, session_id, ref, dest,
+      validState, session_id, ref, dest, attribution,
       utm_source, utm_medium, utm_campaign, utm_content,
     } = await this.yp.await_query(
       "SELECT 1 validState, s.* FROM oauth_state s WHERE state = ? AND ctime > UNIX_TIMESTAMP() - ? LIMIT 1",
@@ -263,7 +310,9 @@ class Account extends Entity {
     })) {
       if (v) utm[k] = String(v).trim().slice(0, 64);
     }
-    return { session_id, ref: ref || "", utm, dest };
+    let parkedAttribution = {};
+    try { parkedAttribution = JSON.parse(attribution || "{}"); } catch (e) { /* not worth failing a sign-in */ }
+    return { session_id, ref: ref || "", utm, dest, attribution: parkedAttribution };
   }
 
   /**
@@ -282,7 +331,7 @@ class Account extends Entity {
    */
   async stashOauthHandoff(ctx, profile) {
     const code = mintHandoffCode();
-    const parked = { ...profile, ref: ctx.ref || "", utm: ctx.utm || {} };
+    const parked = { ...profile, ref: ctx.ref || "", utm: ctx.utm || {}, attribution: ctx.attribution || {} };
     await this.yp.await_query(
       "INSERT INTO oauth_handoff (code, session_id, provider, profile, ctime) VALUES (?, ?, ?, ?, UNIX_TIMESTAMP())",
       code, ctx.session_id, profile.provider, JSON.stringify(parked)
@@ -439,6 +488,34 @@ class Account extends Entity {
     }
   }
 
+  /**
+   * Keep where this account came from, and record signup_completed when it
+   * belongs to a campaign. Swallowed like _trackSignup, for the same reason.
+   * INSERT IGNORE is what makes the first touch stick.
+   */
+  async _trackAttribution(drumate, attribution) {
+    try {
+      const uid = (drumate && (drumate.id || drumate.uid)) || "";
+      const a = attribution || {};
+      if (!uid || !Object.keys(a).length) return;
+      const keys = [...Object.keys(ATTRIBUTION_FIELDS), "country"];
+      await this.yp.await_query(
+        `INSERT IGNORE INTO campaign_attribution (uid, ${keys.join(", ")}, ctime)`
+        + ` VALUES (?, ${keys.map(() => "?").join(", ")}, UNIX_TIMESTAMP())`,
+        uid, ...keys.map((k) => a[k] || null)
+      );
+      if (a.offer) {
+        await this.yp.await_query(
+          "INSERT IGNORE INTO campaign_event (uid, event, ctime)"
+          + " VALUES (?, 'signup_completed', UNIX_TIMESTAMP())",
+          uid
+        );
+      }
+    } catch (e) {
+      this.warn("[create_account] attribution not tracked —", e && e.message);
+    }
+  }
+
   async create_account(data, autosignin = 1) {
     const { main_domain: domain } = sysEnv();
     let {
@@ -520,6 +597,7 @@ class Account extends Entity {
     // profile key dies with the account, so a deleted user silently reduces
     // last month's campaign total. See schemas/tables/signup_track.sql.
     await this._trackSignup(drumate, { profile, ref, utm: _utm, method: data.method });
+    await this._trackAttribution(drumate, data.attribution);
 
     if (!autosignin) {
       return drumate;
@@ -594,6 +672,7 @@ class Account extends Entity {
       // counted as organic — the referral handle made the round trip and the
       // campaign did not, because only one of them had somewhere to wait.
       utm: profile.utm || undefined,
+      attribution: profile.attribution || undefined,
       // Names itself for signup_track. Without it every signup reads as
       // 'local' and the OAuth split — the one that was broken until now — is
       // invisible again.
@@ -742,6 +821,7 @@ class Account extends Entity {
       const { session_id, dest } = ctx;
       const ref = ctx.ref || "";
       const utm = ctx.utm || {};
+      const attribution = ctx.attribution || {};
 
       const domain_name = this.input.host();
       this.debug(`[Auth] OAuth sign-in: provider=${provider}`);
@@ -809,6 +889,7 @@ class Account extends Entity {
         // and unreachable from here.
         if (ref) profile.ref = ref;
         if (Object.keys(utm).length) profile.utm = utm;
+        if (Object.keys(attribution).length) profile.attribution = attribution;
         let res = await this.addUser(profile, session_id);
         res.method = 'signup';
         res.dest = this._sanitiseDest(dest);
