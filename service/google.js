@@ -161,6 +161,8 @@ class Goggle extends Loby {
         }
       }
 
+      await this._parkAttribution(state);
+
       const authUrl = this.googleClient.generateAuthUrl({
         access_type: 'offline',
         scope: ['email', 'profile'],

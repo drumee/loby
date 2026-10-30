@@ -428,6 +428,7 @@ class Register extends Loby {
           }
         }
       }
+      await this._parkAttribution(state);
       const authUrl = `https://appleid.apple.com/auth/authorize?` +
         `client_id=${encodeURIComponent(service_id)}` +
         `&redirect_uri=${encodeURIComponent(redirect_uri)}` +
