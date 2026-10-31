@@ -173,7 +173,10 @@ class Account extends Entity {
     }
     if (!Object.keys(out).length) return out;
     try {
-      const geo = require("geoip-lite").lookup(this.input.ip());
+      // From the headers: input.ip() answers nothing on this path.
+      const h = this.input.headers() || {};
+      const [ip] = String(h["x-forwarded-for"] || h["x-real-ip"] || "").split(/[, ]+/);
+      const geo = ip ? require("geoip-lite").lookup(ip) : null;
       if (geo && geo.country) out.country = geo.country;
     } catch (e) {
       this.warn("[attribution] no country —", e && e.message);
