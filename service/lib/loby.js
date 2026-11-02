@@ -43,6 +43,13 @@ const ATTRIBUTION_FIELDS = {
   utm_term: 100, gclid: 512, li_fat_id: 512, fbclid: 512, ga_client_id: 64,
 };
 
+// The $1 first-month offers a signup link can carry (`team-1usd` from the
+// drumee.com campaign pages, `TEAM1` from ui-team libs/offer-link). An OAuth
+// signup on one of them gets the "Lead Signup $1" Ads conversion on the
+// account-created page. KEEP IN STEP with ONE_DOLLAR_OFFER in the signup
+// plugin (src/widgets/form/index.js), the email side of the same conversion.
+const ONE_DOLLAR_OFFER = /^(team-1usd|team1)$/i;
+
 class Account extends Entity {
 
   /**
@@ -895,6 +902,9 @@ class Account extends Entity {
         if (Object.keys(attribution).length) profile.attribution = attribution;
         let res = await this.addUser(profile, session_id);
         res.method = 'signup';
+        // A flag, never the offer itself: the template drops it into a script
+        // with the raw delimiter, and the offer comes off a URL.
+        res.lead_1usd = ONE_DOLLAR_OFFER.test(attribution.offer || '') ? 1 : 0;
         res.dest = this._sanitiseDest(dest);
         return res;
       }

@@ -65,6 +65,18 @@
       gtag('event', 'conversion', {
         send_to: 'AW-18350168481/-ZHOCLnjv-EcEKGzha5E'
       });
+      <% if (typeof lead_1usd !== 'undefined' && lead_1usd) { %>
+      // "Lead Signup $1" (1 USD), for a signup that came on a $1 offer link only;
+      // lib/loby.js sets the flag from the parked offer. Not a copy of the block
+      // above but a second action, which marketing keeps out of Primary next to
+      // that one so the $1 campaign is not counted twice. KEEP THE LABEL IN SYNC
+      // with _reportOfferLead in the signup plugin (src/widgets/form/index.js).
+      gtag('event', 'conversion', {
+        send_to: 'AW-18350168481/wn_2CNmiv7AdEKGzha5E',
+        value: 1.0,
+        currency: 'USD'
+      });
+      <% } %>
       // The GA4 half of the same signup, as GA4's recommended `sign_up` event.
       // No send_to, so it reaches every configured id: GA4 records it, Ads sees
       // an ordinary event and ignores it. `method` separates this route from
