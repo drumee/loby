@@ -74,6 +74,17 @@
       s.async = true;
       s.src = 'https://www.googletagmanager.com/gtag/js?id=AW-18350168481';
       document.head.appendChild(s);
+      // Google Tag Manager GTM-W3QPF63L, the container drumee.com and the app
+      // bundle load (ui-team src/drumee/libs/gtag.js — KEEP IN SYNC). It holds
+      // marketing's Meta Pixel, which listens on this same dataLayer and maps
+      // the sign_up above to Meta's CompleteRegistration, so the SSO route
+      // reaches Meta the way the email route does. Marker first, loader after,
+      // for the same reason as the Google tag.
+      dataLayer.push({ 'gtm.start': new Date().getTime(), event: 'gtm.js' });
+      var g = document.createElement('script');
+      g.async = true;
+      g.src = 'https://www.googletagmanager.com/gtm.js?id=GTM-W3QPF63L';
+      document.head.appendChild(g);
     })();
   </script>
   <% } %>
